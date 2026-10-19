@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   return NextResponse.json({ settings: await getSettings(), defaults: DEFAULTS });
 }
 
-const KEYS = ["rules", "branding", "pricing", "flags", "site"] as const;
+const KEYS = ["rules", "branding", "pricing", "flags", "analytics", "site"] as const;
 type Key = (typeof KEYS)[number];
 
 export async function PUT(req: Request) {

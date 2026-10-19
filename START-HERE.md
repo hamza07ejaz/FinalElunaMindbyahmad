@@ -245,6 +245,75 @@ comes back, the whole stack works.
 
 ---
 
+---
+
+## 7b. Google: analytics, search, and sign-in
+
+All three are optional and all three live in **Admin → Branding & site**, so
+none of them needs a redeploy.
+
+### Analytics
+
+Google Analytics → **Admin → Data streams** → your stream → copy the
+**measurement ID** (starts with `G-`). Paste it into the **Google** card and
+press **Save**. Reporting starts within a minute; the security headers already
+allow it.
+
+Leave it empty and **nothing from Google is loaded at all** — no script, no
+cookie. That is the default.
+
+It will not accept a `UA-` ID (Universal Analytics, retired) or a `GTM-` ID
+(Tag Manager) — those need a different snippet. Only `G-`.
+
+### Search Console — so Google actually indexes the site
+
+Without this, Google finds the site eventually. With it, you can push the
+sitemap and see what it has indexed and what it refused.
+
+1. search.google.com/search-console → **Add property** → **URL prefix** → paste
+   your site URL.
+2. Choose the **HTML tag** method. Copy the whole `<meta …>` line.
+3. Admin → Branding & site → **Search Console verification** → paste it. The
+   token is pulled out of the tag for you. **Save.**
+4. Back in Search Console, press **Verify**.
+5. Then **Sitemaps** in the left menu → enter `sitemap.xml` → **Submit**.
+
+### Sign in with Google
+
+The button is already built. It needs Google and Supabase introduced to each
+other first, and **the switch must stay off until they are** — otherwise the
+button is there and returns an error.
+
+1. **console.cloud.google.com** → create a project (any name).
+2. **APIs & Services → OAuth consent screen**: External, fill in the app name,
+   your support email, and a developer email. Save. Leave it in Testing while
+   you try it; **Publish** it before real users sign up, or only the test
+   accounts you list can log in.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID** →
+   type **Web application**.
+4. **Authorised redirect URI** — this is the one people get wrong. It is
+   **Supabase's** callback, not your site's:
+
+   ```
+   https://YOUR-PROJECT.supabase.co/auth/v1/callback
+   ```
+
+   Take the host from your `NEXT_PUBLIC_SUPABASE_URL`.
+5. Create, then copy the **Client ID** and **Client secret**.
+6. Supabase → **Authentication → Providers → Google** → switch on, paste both,
+   **Save**.
+7. Now Admin → Branding & site → **Sign in with Google** → on.
+
+Test it in a private window. If it fails, the error almost always says
+`redirect_uri_mismatch`, which means step 4 does not match exactly — no
+trailing slash, `https`, and the Supabase host, not yours.
+
+> Switching analytics on means your privacy policy has to say the site tracks
+> visitors. Edit it in Admin → **Pages**. In most countries that is a legal
+> requirement, not a formality.
+
+---
+
 ## 8. Payments — Admin → Payments
 
 **Skip this entirely if you are not taking money yet.** Everything else works

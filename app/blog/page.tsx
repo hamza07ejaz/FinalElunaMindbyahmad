@@ -25,7 +25,11 @@ async function listPosts(): Promise<Post[]> {
 
 export async function generateMetadata(): Promise<Metadata> {
   const { branding } = await getSettings();
-  return { title: `Blog — ${branding.siteName}`, description: `Study tips and product news from ${branding.siteName}.` };
+  return {
+    title: `Blog — ${branding.siteName}`,
+    description: `Study tips and product news from ${branding.siteName}.`,
+    alternates: { canonical: "/blog" },
+  };
 }
 
 export default async function BlogIndex() {

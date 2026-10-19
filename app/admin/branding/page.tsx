@@ -7,7 +7,19 @@ type Branding = { siteName: string; tagline: string; logoUrl: string; supportEma
 type Flags = {
   aiDisabled: boolean; signupsOpen: boolean; blogEnabled: boolean; maintenanceNote: string;
   trialEnabled: boolean; trialDays: number; trialRequiresCard: boolean; supportEnabled: boolean;
+  googleAuthEnabled: boolean;
 };
+type Analytics = { gaId: string; googleSiteVerification: string };
+
+/** The same shapes the server will accept; checked here so the error is immediate. */
+const GA_ID = /^G-[A-Z0-9]{4,20}$/;
+const GSV = /^[A-Za-z0-9_-]{20,100}$/;
+
+/** People paste the whole <meta> tag; take the token out of it rather than refusing. */
+function gsvToken(v: string) {
+  const m = /content=["']([^"']+)["']/.exec(v.trim());
+  return (m ? m[1] : v).trim();
+}
 
 function Toggle({ on, onChange, label, hint, danger }: { on: boolean; onChange: (v: boolean) => void; label: string; hint: string; danger?: boolean }) {
   return (
@@ -27,18 +39,21 @@ function Toggle({ on, onChange, label, hint, danger }: { on: boolean; onChange: 
 export default function BrandingPage() {
   const [b, setB] = useState<Branding | null>(null);
   const [f, setF] = useState<Flags | null>(null);
+  const [a, setA] = useState<Analytics | null>(null);
   const [saving, setSaving] = useState("");
   const { toast, toastNode } = useToast();
 
   useEffect(() => {
     fetch("/api/admin/settings", { cache: "no-store" })
       .then((r) => r.json())
-      .then((j) => { if (j.settings) { setB(j.settings.branding); setF(j.settings.flags); } })
+      .then((j) => {
+        if (j.settings) { setB(j.settings.branding); setF(j.settings.flags); setA(j.settings.analytics ?? { gaId: "", googleSiteVerification: "" }); }
+      })
       .catch(() => toast("Could not load settings.", true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function save(key: "branding" | "flags", value: unknown) {
+  async function save(key: "branding" | "flags" | "analytics", value: unknown) {
     setSaving(key);
     try {
       const r = await fetch("/api/admin/settings", {
@@ -46,13 +61,18 @@ export default function BrandingPage() {
       });
       const j = await r.json();
       if (!r.ok) { toast(j.error || "Could not save.", true); return; }
-      setB(j.settings.branding); setF(j.settings.flags);
+      setB(j.settings.branding); setF(j.settings.flags); setA(j.settings.analytics ?? { gaId: "", googleSiteVerification: "" });
       toast("Saved.");
     } catch { toast("Network problem. Nothing was saved.", true); }
     finally { setSaving(""); }
   }
 
-  if (!b || !f) return <Page title="Branding & site"><Loading rows={5} /></Page>;
+  if (!b || !f || !a) return <Page title="Branding & site"><Loading rows={5} /></Page>;
+
+  // Empty is a valid state — it means analytics is off — so only a non-empty
+  // value that is the wrong shape is worth warning about.
+  const gaBad = a.gaId.trim() !== "" && !GA_ID.test(a.gaId.trim().toUpperCase());
+  const gsvBad = a.googleSiteVerification.trim() !== "" && !GSV.test(gsvToken(a.googleSiteVerification));
 
   return (
     <Page title="Branding & site" sub="The name, logo and words on the public pages, plus the switches that control the whole site.">
@@ -95,6 +115,54 @@ export default function BrandingPage() {
               {saving === "branding" ? <><span className="spinner" /> Saving…</> : <><Icon name="save" size={14} /> Save hero</>}
             </button>
           </Card>
+
+          <Card>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-display text-lg text-paper">Google</h2>
+              <button type="button" className="btn btn-primary btn-sm" disabled={saving === "analytics" || gaBad || gsvBad}
+                onClick={() => save("analytics", {
+                  gaId: a.gaId.trim().toUpperCase(),
+                  googleSiteVerification: gsvToken(a.googleSiteVerification),
+                })}>
+                {saving === "analytics" ? <><span className="spinner" /> Saving…</> : <><Icon name="save" size={14} /> Save</>}
+              </button>
+            </div>
+            <Field label="Google Analytics measurement ID" hint="Analytics → Admin → Data streams → your stream. Leave empty to switch analytics off.">
+              <input className="input" value={a.gaId} spellCheck={false} placeholder="G-XXXXXXXXXX"
+                onChange={(e) => setA({ ...a, gaId: e.target.value })} />
+            </Field>
+            {gaBad && (
+              <p role="alert" className="mt-2 text-xs text-red-300">
+                That is not a measurement ID. It starts with <code className="rounded bg-white/10 px-1">G-</code> — a
+                stream ID or a property number will not work.
+              </p>
+            )}
+            <p className="mt-3 text-xs text-muted">
+              {a.gaId && !gaBad
+                ? "Analytics is on. It loads after the page is usable, so it does not slow anything down."
+                : "No analytics is loaded at all while this is empty — no Google script, no cookie."}
+              {" "}Remember that tracking visitors is something your privacy policy has to mention.
+            </p>
+
+            <div className="mt-5 border-t border-white/5 pt-5">
+              <Field label="Search Console verification"
+                hint="Search Console → Add property → URL prefix → HTML tag. Paste the whole tag or just the token.">
+                <input className="input" value={a.googleSiteVerification} spellCheck={false}
+                  placeholder="or paste the full <meta …> tag"
+                  onChange={(e) => setA({ ...a, googleSiteVerification: e.target.value })} />
+              </Field>
+              {gsvBad && (
+                <p role="alert" className="mt-2 text-xs text-red-300">
+                  That does not look like a verification token. Copy the whole tag from Search Console and paste it
+                  here — the token will be taken out of it.
+                </p>
+              )}
+              <p className="mt-2 text-xs text-muted">
+                Needed once, to prove the site is yours. After it verifies you can submit the sitemap at
+                {" "}<code className="rounded bg-white/10 px-1">/sitemap.xml</code> and see what Google indexes.
+              </p>
+            </div>
+          </Card>
         </div>
 
         <aside>
@@ -113,6 +181,9 @@ export default function BrandingPage() {
               label="Show the blog" hint="Hides /blog from visitors without deleting any posts." />
             <Toggle on={f.supportEnabled} onChange={(v) => setF({ ...f, supportEnabled: v })}
               label="In-app support tickets" hint="Off sends users to your support email instead. Open tickets stay readable in the inbox." />
+            <Toggle on={f.googleAuthEnabled} onChange={(v) => setF({ ...f, googleAuthEnabled: v })}
+              label="Sign in with Google"
+              hint="Only switch this on once Google is connected in Supabase → Authentication → Providers. Before that the button just returns an error." />
             <Toggle on={f.trialEnabled} onChange={(v) => setF({ ...f, trialEnabled: v })}
               label="Offer a free Premium trial" hint="New accounts can try Premium once, with no card. Trials already running are unaffected." />
             {f.trialEnabled && (

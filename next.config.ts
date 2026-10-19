@@ -25,7 +25,13 @@ const csp = [
   "default-src 'self'",
   // 'unsafe-inline' is what Next's hydration bootstrap needs. 'unsafe-eval' is
   // deliberately absent: nothing here evaluates strings as code.
-  "script-src 'self' 'unsafe-inline'",
+  //
+  // googletagmanager is listed whether or not analytics is switched on, because
+  // the measurement ID lives in the admin panel and this header is built once at
+  // build time. The widening is small: 'unsafe-inline' is already here, so an
+  // attacker who could inject a tag could already run code; this only adds one
+  // more well-known origin they could load it from.
+  "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com",
   // Tailwind and the components set styles inline; there is no way around this one.
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
@@ -38,6 +44,13 @@ const csp = [
     "connect-src 'self'",
     supabase, supabaseWs,
     "https://api.stripe.com",
+    // Where gtag.js sends what it collects. The regional endpoints matter:
+    // Google routes a visitor in Europe to region1.analytics.google.com rather
+    // than the main host, so a policy listing only the obvious domain works in
+    // testing and then silently drops hits from half the world.
+    "https://www.googletagmanager.com",
+    "https://*.google-analytics.com",
+    "https://*.analytics.google.com",
   ].filter(Boolean).join(" "),
   // Nothing is embedded, and nothing embeds this. Stripe checkout and the
   // billing portal are full redirects, not iframes.

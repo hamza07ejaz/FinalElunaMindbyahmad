@@ -8,6 +8,9 @@ import { getSettings } from "../../lib/settings";
 export const metadata: Metadata = {
   title: "Pricing — Eluna Mind",
   description: "Free to study with every day. Premium unlocks every tool and much higher daily limits.",
+  // Relative, so it resolves against metadataBase and stays right on every
+  // deployment — including preview URLs, which must not claim to be the real one.
+  alternates: { canonical: "/pricing" },
 };
 
 export default async function PricingPage() {

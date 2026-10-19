@@ -6,7 +6,15 @@ import { supabase } from "../../lib/supabase/browser";
 import { Icon } from "../_components/Icon";
 import { Logo } from "../_components/Logo";
 
-const GOOGLE = process.env.NEXT_PUBLIC_GOOGLE_AUTH === "1";
+/**
+ * Whether to offer Google sign-in is an admin setting now, not a build-time
+ * constant, so turning it on does not mean a redeploy. The env var is still
+ * honoured server-side for deployments that already set it.
+ *
+ * It starts false and is switched on by the status fetch, which means the
+ * button appears a moment after the page does rather than flashing and
+ * vanishing on a site that does not use it.
+ */
 
 function safeNext(v: string | null) {
   return v && v.startsWith("/") && !v.startsWith("//") ? v : "/dashboard";
@@ -72,12 +80,16 @@ export function LoginForm() {
   const [error, setError] = useState(sp.get("error") ? "That sign-in did not complete. Please try again." : "");
   const [info, setInfo] = useState("");
   const [signupsOpen, setSignupsOpen] = useState(true);
+  const [showGoogle, setShowGoogle] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch("/api/signup-status")
       .then((r) => r.json())
-      .then((j) => setSignupsOpen(j.signupsOpen !== false))
+      .then((j) => {
+        setSignupsOpen(j.signupsOpen !== false);
+        setShowGoogle(j.googleAuth === true);
+      })
       .catch(() => {});
   }, []);
 
@@ -157,7 +169,7 @@ export function LoginForm() {
             ))}
           </div>
 
-          {GOOGLE && (
+          {showGoogle && (
             <>
               <button type="button" onClick={google} className="btn btn-ghost mt-5 w-full !py-3" disabled={googleBusy}>
                 {googleBusy ? <span className="spinner" /> : (
@@ -171,7 +183,7 @@ export function LoginForm() {
             </>
           )}
 
-          <form onSubmit={submit} className={`space-y-4 ${GOOGLE ? "" : "mt-6"}`}>
+          <form onSubmit={submit} className={`space-y-4 ${showGoogle ? "" : "mt-6"}`}>
             <label className="block">
               <span className="mb-1.5 block text-sm text-paper/90">Email</span>
               <div className="relative">

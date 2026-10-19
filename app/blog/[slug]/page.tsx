@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "../../../lib/supabase/admin";
 import { getSettings } from "../../../lib/settings";
+import { siteUrl } from "../../../lib/site";
+import { JsonLd, blogPosting } from "../../_components/JsonLd";
 import { Markdown } from "../../_components/Markdown";
 import { SiteNav } from "../../_components/landing/SiteNav";
 import { Footer } from "../../_components/landing/Footer";
@@ -12,7 +14,10 @@ type Props = { params: Promise<{ slug: string }> };
 
 async function getPost(slug: string) {
   const { data } = await supabaseAdmin()
-    .from("blog_posts").select("slug,title,excerpt,content,cover_url,tags,author_name,published_at")
+    // updated_at is here for the structured data and the social card: Google
+    // shows a "last updated" date, and without the column it would always be
+    // the publish date even on a post rewritten a year later.
+    .from("blog_posts").select("slug,title,excerpt,content,cover_url,tags,author_name,published_at,updated_at")
     .eq("slug", slug).eq("status", "published").maybeSingle();
   return data;
 }
@@ -24,20 +29,31 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: post.title,
     description: post.excerpt ?? undefined,
-    openGraph: { title: post.title, description: post.excerpt ?? undefined, images: post.cover_url ? [post.cover_url] : undefined },
+    alternates: { canonical: `/blog/${slug}` },
+    openGraph: {
+      type: "article",
+      title: post.title,
+      description: post.excerpt ?? undefined,
+      images: post.cover_url ? [post.cover_url] : undefined,
+      publishedTime: (post.published_at as string) ?? undefined,
+      modifiedTime: (post.updated_at as string) ?? undefined,
+    },
   };
 }
 
 export default async function BlogPost({ params }: Props) {
-  const { flags } = await getSettings();
+  const { flags, branding } = await getSettings();
   if (!flags.blogEnabled) notFound();
 
   const { slug } = await params;
   const post = await getPost(slug);
   if (!post) notFound();
 
+  const schema = blogPosting(siteUrl(), branding.siteName, post);
+
   return (
     <div className="relative">
+      <JsonLd data={schema} />
       <SiteNav />
       <article className="px-4 pb-20 pt-36 sm:px-6">
         <div className="mx-auto max-w-2xl">

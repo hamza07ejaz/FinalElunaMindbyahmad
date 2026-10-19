@@ -32,6 +32,7 @@ export async function generateMetadata({ params }: Ctx): Promise<Metadata> {
   return {
     title: `${page.title} — ${branding.siteName}`,
     description: `${page.title} for ${branding.siteName}.`,
+    alternates: { canonical: `/${slug}` },
   };
 }
 

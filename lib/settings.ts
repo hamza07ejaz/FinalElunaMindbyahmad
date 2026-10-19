@@ -43,6 +43,25 @@ export type Flags = {
    */
   trialRequiresCard: boolean;
   supportEnabled: boolean;     // let users open support tickets in the app
+  /**
+   * Show "Continue with Google" on the login page.
+   *
+   * Off by default because the button only works once Google and Supabase have
+   * been set up at both ends; shown before that, it is a button that returns an
+   * error, which is worse than no button. The NEXT_PUBLIC_GOOGLE_AUTH env var
+   * still forces it on, so an existing deployment keeps working.
+   */
+  googleAuthEnabled: boolean;
+};
+
+export type Analytics = {
+  /** A GA4 measurement ID, like G-ABC1234567. Empty = no analytics at all. */
+  gaId: string;
+  /**
+   * The token from Google Search Console's "HTML tag" verification method —
+   * the content="…" part, not the whole tag. Empty = no meta tag is emitted.
+   */
+  googleSiteVerification: string;
 };
 
 export type Settings = {
@@ -50,6 +69,7 @@ export type Settings = {
   branding: Branding;
   pricing: Pricing;
   flags: Flags;
+  analytics: Analytics;
   /** Every word on the public site. */
   site: SiteContent;
 };
@@ -82,13 +102,17 @@ export const DEFAULT_FLAGS: Flags = {
   trialDays: 7,
   trialRequiresCard: true,
   supportEnabled: true,
+  googleAuthEnabled: false,
 };
+
+export const DEFAULT_ANALYTICS: Analytics = { gaId: "", googleSiteVerification: "" };
 
 export const DEFAULTS: Settings = {
   rules: DEFAULT_RULES,
   branding: DEFAULT_BRANDING,
   pricing: DEFAULT_PRICING,
   flags: DEFAULT_FLAGS,
+  analytics: DEFAULT_ANALYTICS,
   site: DEFAULT_SITE,
 };
 
@@ -135,6 +159,42 @@ function mergeFlags(stored: unknown): Flags {
     trialEnabled: typeof f.trialEnabled === "boolean" ? f.trialEnabled : DEFAULT_FLAGS.trialEnabled,
     trialRequiresCard: typeof f.trialRequiresCard === "boolean" ? f.trialRequiresCard : DEFAULT_FLAGS.trialRequiresCard,
     supportEnabled: typeof f.supportEnabled === "boolean" ? f.supportEnabled : DEFAULT_FLAGS.supportEnabled,
+    googleAuthEnabled: typeof f.googleAuthEnabled === "boolean" ? f.googleAuthEnabled : DEFAULT_FLAGS.googleAuthEnabled,
+  };
+}
+
+/**
+ * A GA4 measurement ID, or nothing.
+ *
+ * This value is written straight into a <script> URL and into the inline
+ * gtag call, so it is the one setting on the panel that could turn an admin
+ * account into script injection on every page. It is therefore matched against
+ * the shape Google actually issues rather than merely trimmed: anything else
+ * becomes an empty string, which switches analytics off.
+ */
+const GA_ID = /^G-[A-Z0-9]{4,20}$/;
+
+/**
+ * Google's verification token. It goes into a meta tag's content attribute, so
+ * it is held to the character set Google actually issues rather than trimmed —
+ * the same reasoning as the measurement ID above. People routinely paste the
+ * whole <meta> tag, so that case is unwrapped rather than rejected.
+ */
+const GSV = /^[A-Za-z0-9_-]{20,100}$/;
+
+function mergeAnalytics(stored: unknown): Analytics {
+  const a = merge(DEFAULT_ANALYTICS, stored);
+
+  const id = typeof a.gaId === "string" ? a.gaId.trim().toUpperCase() : "";
+
+  let token = typeof a.googleSiteVerification === "string" ? a.googleSiteVerification.trim() : "";
+  // "<meta name="google-site-verification" content="TOKEN" />" → "TOKEN"
+  const wrapped = /content=["']([^"']+)["']/.exec(token);
+  if (wrapped) token = wrapped[1].trim();
+
+  return {
+    gaId: GA_ID.test(id) ? id : "",
+    googleSiteVerification: GSV.test(token) ? token : "",
   };
 }
 
@@ -162,6 +222,7 @@ export async function getSettings(): Promise<Settings> {
       branding: merge(DEFAULT_BRANDING, byKey.branding),
       pricing: merge(DEFAULT_PRICING, byKey.pricing),
       flags: mergeFlags(byKey.flags),
+      analytics: mergeAnalytics(byKey.analytics),
       site: normaliseSite(byKey.site),
     };
   } catch (err) {

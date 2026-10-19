@@ -27,7 +27,7 @@ Anyone who is not an admin is sent back to `/dashboard`, and the admin APIs refu
 | Overview | Total users, premium count, active users, uses per day, which tools get used |
 | Users | Search and filter, see each person's usage, change plan, block, reset usage, grant admin, add a private note |
 | Plans & limits | Daily limits per tool, which tools are Premium, max input length, max AI tokens, and all the pricing-page wording |
-| Branding & site | Site name, logo URL, support email, homepage headline, plus switches: pause AI, close sign-ups, hide blog, site-wide notice |
+| Branding & site | Site name, logo URL, support email, homepage headline, the Google Analytics ID, plus switches: pause AI, close sign-ups, hide blog, site-wide notice |
 | Blog | Write, preview, publish and delete posts; they appear at /blog |
 | Activity log | Every admin change, with who did it and when |
 

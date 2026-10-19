@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ErrorReporter } from "./_components/ErrorCatcher";
 import { getSettings } from "../lib/settings";
@@ -36,7 +37,7 @@ export const viewport: Viewport = {
  * the preview comes back as a grey box with no picture at all.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const { branding } = await getSettings();
+  const { branding, analytics } = await getSettings();
   const base = siteUrl();
   const title = `${branding.siteName} — ${SHORT_PITCH}`;
 
@@ -71,7 +72,18 @@ export async function generateMetadata(): Promise<Metadata> {
       follow: true,
       googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
     },
-    alternates: { canonical: base },
+    /**
+     * No canonical here on purpose.
+     *
+     * A canonical set on the root layout is inherited by every page that does
+     * not override it, so each one ends up telling Google it is a duplicate of
+     * the homepage — which is how a site gets indexed down to a single page.
+     * Every public page now declares its own, and anything new that forgets to
+     * will self-canonicalise, which is the right default.
+     */
+    verification: analytics.googleSiteVerification
+      ? { google: analytics.googleSiteVerification }
+      : undefined,
     formatDetection: { telephone: false },
   };
 }
@@ -79,11 +91,17 @@ export async function generateMetadata(): Promise<Metadata> {
 /** Said once here so the card, the tab and the search result agree. */
 const SHORT_PITCH = "Smarter Learning";
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Read from the panel, not an env var, so the ID can be changed or removed
+  // without a redeploy — and so a client can be handed the site without being
+  // handed a build pipeline. getSettings caches for ten seconds and falls back
+  // to defaults if the database is unreachable, so this cannot break the page.
+  const { analytics } = await getSettings();
+
   return (
     <html lang="en">
       <body className={`${inter.variable} ${display.variable} antialiased`}>
@@ -99,6 +117,28 @@ export default function RootLayout({
         <a href="#main" className="skip-link">Skip to content</a>
         <ErrorReporter />
         {children}
+
+        {/*
+          Google Analytics, only when an ID is actually configured. afterInteractive
+          keeps it out of the critical path: the page is usable before any of this
+          is fetched, which matters more here than counting a visitor 200ms sooner.
+          gaId is validated against the GA4 shape in settings, so interpolating it
+          into both the URL and the inline call is safe.
+        */}
+        {analytics.gaId && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${analytics.gaId}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga-init" strategy="afterInteractive">{`
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${analytics.gaId}');
+            `}</Script>
+          </>
+        )}
       </body>
     </html>
   );
