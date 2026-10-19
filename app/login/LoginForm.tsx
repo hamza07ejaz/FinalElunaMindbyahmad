@@ -20,6 +20,28 @@ function safeNext(v: string | null) {
   return v && v.startsWith("/") && !v.startsWith("//") ? v : "/dashboard";
 }
 
+/**
+ * Turn a transport failure into a sentence.
+ *
+ * When the browser cannot reach Supabase at all — DNS, a blocked request, an
+ * offline laptop, a content security policy that does not list the project —
+ * the client hands back the raw failure. "Failed to fetch" and
+ * `Unexpected token '<', "<!DOCTYPE "... is not valid JSON` are the two that
+ * surface, and both are meaningless to the person trying to log in: they read
+ * like the site is broken in a way they caused.
+ *
+ * The real cause is always configuration or connectivity, never the password,
+ * so say that and leave the detail in the console for whoever is on call.
+ */
+function friendly(message: string): string {
+  const transport = /failed to fetch|networkerror|load failed|fetch failed|is not valid json|unexpected token/i;
+  if (transport.test(message)) {
+    console.error("auth transport failure:", message);
+    return "Could not reach the server. Check your connection and try again — if it keeps happening, the site is misconfigured rather than your details being wrong.";
+  }
+  return message;
+}
+
 /** Small looping proof-of-life next to the form, so the page is not just a box on a wall. */
 function SidePanel() {
   const LINES = [
@@ -111,7 +133,7 @@ export function LoginForm() {
       if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) {
-          setError(/invalid login/i.test(error.message) ? "That email and password do not match. Check both, or reset your password." : error.message);
+          setError(/invalid login/i.test(error.message) ? "That email and password do not match. Check both, or reset your password." : friendly(error.message));
           return;
         }
         window.location.assign(next);
@@ -122,7 +144,7 @@ export function LoginForm() {
           options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
         });
         if (error) {
-          setError(/already registered/i.test(error.message) ? "An account already uses this email. Try logging in instead." : error.message);
+          setError(/already registered/i.test(error.message) ? "An account already uses this email. Try logging in instead." : friendly(error.message));
           return;
         }
         if (data.session) window.location.assign(next);
@@ -138,7 +160,7 @@ export function LoginForm() {
       provider: "google",
       options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
     });
-    if (error) { setError(error.message); setGoogleBusy(false); }
+    if (error) { setError(friendly(error.message)); setGoogleBusy(false); }
   }
 
   return (

@@ -17,9 +17,23 @@ import type { NextConfig } from "next";
  * was verified in a browser with the console watched, not just written.
  */
 
-/** Supabase is a different origin, so the browser has to be allowed to reach it. */
-const supabase = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim().replace(/\/+$/, "");
-const supabaseWs = supabase.replace(/^https:/, "wss:");
+/**
+ * Supabase is a different origin, so the browser has to be allowed to reach it.
+ *
+ * This is read at BUILD time, which is the trap. If the variable is missing or
+ * wrong in the build environment, connect-src ends up without Supabase in it and
+ * the browser silently blocks every auth and database call. What the user sees
+ * is "Failed to fetch" on the login screen — a message that points nowhere near
+ * a security header, and that survives fixing the variable until the next build.
+ *
+ * So: use the exact origin when it is there, and fall back to the Supabase
+ * wildcard when it is not. A slightly wider policy on a misconfigured deployment
+ * is a far better failure than an application that cannot talk to its database.
+ */
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim().replace(/\/+$/, "");
+const supabaseOrigins = /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/i.test(supabaseUrl)
+  ? [supabaseUrl, supabaseUrl.replace(/^https:/, "wss:")]
+  : ["https://*.supabase.co", "wss://*.supabase.co", "https://*.supabase.in", "wss://*.supabase.in"];
 
 const csp = [
   "default-src 'self'",
@@ -42,7 +56,7 @@ const csp = [
   "media-src 'self' blob: https:",
   [
     "connect-src 'self'",
-    supabase, supabaseWs,
+    ...supabaseOrigins,
     "https://api.stripe.com",
     // Where gtag.js sends what it collects. The regional endpoints matter:
     // Google routes a visitor in Europe to region1.analytics.google.com rather
