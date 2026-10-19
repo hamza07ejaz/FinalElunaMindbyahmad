@@ -1,0 +1,48 @@
+# ============================================================
+# PASTE THIS WHOLE BLOCK INTO VERCEL
+#
+# Vercel → your project → Settings → Environment Variables.
+# Click the key field and paste all of this at once — Vercel splits
+# it into separate variables itself. Tick Production, Preview and
+# Development before saving.
+#
+# Fill in every value first. Anything left empty will break
+# something, and the build fails without the NEXT_PUBLIC_ ones.
+#
+# Never commit this file with real values in it.
+# ============================================================
+
+# ---- Supabase (Project Settings → API) ----
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_PASTE_HERE
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_PASTE_HERE
+
+# ---- AI provider: fill ONE block, delete the other ----
+
+# OpenAI (paid):
+OPENAI_API_KEY=sk-PASTE_HERE
+OPENAI_BASE_URL=
+OPENAI_MODEL=gpt-4o-mini
+
+# Gemini (free) — if you use this instead, swap the three lines above for:
+#   OPENAI_API_KEY=YOUR_GEMINI_KEY
+#   OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+#   OPENAI_MODEL=gemini-2.5-flash
+
+# ---- Stripe ----
+STRIPE_SECRET_KEY=sk_test_PASTE_HERE
+STRIPE_PRICE_ID=price_PASTE_HERE
+STRIPE_WEBHOOK_SECRET=whsec_FROM_THE_NEW_VERCEL_WEBHOOK
+
+# ---- This app ----
+# Your Vercel URL, no trailing slash. Stripe sends people back here
+# after checkout, so a stale value lands paying customers on a dead site.
+NEXT_PUBLIC_APP_URL=https://YOUR-PROJECT.vercel.app
+
+AI_DISABLED=0
+DEMO_CHECKOUT=0
+
+# ---- Optional. Delete these lines to keep the defaults. ----
+OPENAI_TRANSCRIBE_MODEL=whisper-1
+TRANSCRIBE_MAX_BYTES=12582912
+BOT_AI_DAILY_BUDGET=300

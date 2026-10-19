@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en" style="margin:0;padding:0;">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="dark light">
+<meta name="supported-color-schemes" content="dark light">
+<title>Confirm your email</title>
+<style>
+  /* Stripped by a few clients, which is why the base padding is already usable. */
+  @media only screen and (max-width:620px) {
+    .pad { padding-left:22px !important; padding-right:22px !important; }
+    .h1  { font-size:22px !important; }
+    .code { font-size:20px !important; letter-spacing:3px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#05060e;">
+
+<!-- Preheader: shown beside the subject line, then hidden in the body. -->
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">One click and your account is ready.</div>
+<div style="display:none;max-height:0;overflow:hidden;">&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#05060e;">
+  <tr>
+    <td align="center" style="padding:32px 12px;">
+
+      <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+      <!--
+        Fluid up to 600, not fixed at 600. A fixed table runs 240 pixels off the
+        side of a phone; Outlook ignores max-width, hence the conditional above
+        giving it a real 600 to work with.
+      -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:#0a0d1c;border-radius:16px;overflow:hidden;">
+
+        <tr>
+          <td style="padding:0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="20%" height="6" style="background-color:#00f0d4;font-size:0;line-height:0;">&nbsp;</td><td width="20%" height="6" style="background-color:#00b4fc;font-size:0;line-height:0;">&nbsp;</td><td width="20%" height="6" style="background-color:#575af9;font-size:0;line-height:0;">&nbsp;</td><td width="20%" height="6" style="background-color:#9653fa;font-size:0;line-height:0;">&nbsp;</td><td width="20%" height="6" style="background-color:#e838fd;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+          </td>
+        </tr>
+
+        <tr>
+          <td class="pad" style="padding:36px 40px 0 40px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding-right:12px;vertical-align:middle;">
+                  <img src="{{ .SiteURL }}/icon-192.png" width="40" height="40" alt=""
+                       style="display:block;width:40px;height:40px;border:0;border-radius:10px;">
+                </td>
+                <td style="vertical-align:middle;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:19px;font-weight:700;color:#edf1fb;letter-spacing:-0.3px;">
+                  Eluna Mind
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <tr>
+          <td class="pad" style="padding:28px 40px 0 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+            <h1 class="h1" style="margin:0 0 14px 0;font-size:26px;line-height:1.25;font-weight:700;color:#edf1fb;letter-spacing:-0.5px;">Confirm your email</h1>
+            <p style="margin:0 0 14px 0;font-size:15px;line-height:1.6;color:#9aa6c4;">Welcome. Confirm this address and your account is ready to use — the tutor, your notes, practice questions and the study planner, all on the free plan.</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td class="pad" style="padding:14px 40px 0 40px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="border-radius:10px;background-color:#575af9;">
+                  <a href="{{ .ConfirmationURL }}" target="_blank"
+                     style="display:inline-block;padding:14px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">
+                    Confirm my email
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <tr>
+          <td class="pad" style="padding:20px 40px 0 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+            <p style="margin:0 0 6px 0;font-size:13px;line-height:1.5;color:#6b7694;">If the button does not work, copy this link into your browser:</p>
+            <p style="margin:0;font-size:13px;line-height:1.5;word-break:break-all;">
+              <a href="{{ .ConfirmationURL }}" target="_blank" style="color:#c0b0ff;text-decoration:underline;">{{ .ConfirmationURL }}</a>
+            </p>
+          </td>
+        </tr>
+
+        <tr>
+          <td class="pad" style="padding:22px 40px 0 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+            
+            <p style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:#6b7694;">Or enter this code in the app:</p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="background-color:#10152b;border:1px solid #1e2540;border-radius:10px;padding:12px 20px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:24px;font-weight:700;letter-spacing:5px;color:#edf1fb;"
+                    class="code">
+                  {{ .Token }}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <tr>
+          <td class="pad" style="padding:28px 40px 32px 40px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td height="1" style="background-color:#1e2540;font-size:0;line-height:0;">&nbsp;</td></tr>
+            </table>
+            <p style="margin:18px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#6b7694;">
+              This link works once and expires in 24 hours. If you did not ask for this, you can ignore this email — nothing will change.
+            </p>
+          </td>
+        </tr>
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+
+      <p style="margin:18px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#6b7694;text-align:center;">
+        Sent by Eluna Mind · <a href="{{ .SiteURL }}" style="color:#6b7694;text-decoration:underline;">{{ .SiteURL }}</a>
+      </p>
+
+    </td>
+  </tr>
+</table>
+</body>
+</html>
