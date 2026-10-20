@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "../../_components/Icon";
 import { Card, Confirm, Empty, Field, Loading, Page, Pill, useToast } from "../ui";
+import { SlideImages } from "./SlideImages";
 
 type Row = {
   id: string; label: string; key_preview: string;
@@ -325,6 +326,8 @@ export default function AiKeysPage() {
           <li>· Keys are never sent back to this page. To change one, paste a new value over it.</li>
         </ul>
       </Card>
+
+      <SlideImages />
 
       <Confirm
         open={!!ask}

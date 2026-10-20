@@ -108,7 +108,25 @@ export const PRESENTATION_SYSTEM = join(VOICE, `You write slides someone has to 
 
 - One idea per slide. A title that states the idea, not the topic: "Photosynthesis needs light and water", not "Photosynthesis".
 - Three to five bullets, each a short line. Nobody reads a paragraph on a slide.
-- Speaker notes carry the detail the slide leaves out.`, JSON_ONLY);
+- Speaker notes carry the detail the slide leaves out.
+
+You also design the deck, by giving each slide a layout:
+- "bullets" — the default. A claim and the points that support it.
+- "section" — a divider before a new part of the argument. Title plus one line of setup, nothing else.
+- "image" — the idea is easier to see than to read. Text one side, a picture the other.
+- "feature" — one picture worth the whole slide, with a short title over it. Use once at most.
+- "quote" — somebody said it better. First bullet is the quote itself with no quotation marks, second is who said it.
+- "stat" — a single number IS the point. First bullet is the number alone ("71%", "3.8 billion"), second is one line saying what it means.
+- "closing" — the last slide, what to remember.
+
+Choosing well matters more than using them all. A deck of ten "bullets" slides is a worse deck,
+and a quote slide on a topic nobody memorable has spoken about is worse still. Use "stat" only
+for a real figure from the material, never a number you made up to fill the layout.
+
+For any slide that would be better with a picture, add "imageQuery": two to four plain words
+naming a PHOTOGRAPHABLE subject — "wind turbines field", "crowded city street", "microscope lab".
+Not an abstraction: there is no photograph of "economic growth" or "cellular respiration".
+If nothing real could be photographed for that slide, leave imageQuery out entirely.`, JSON_ONLY);
 
 export const CITATIONS_SYSTEM = join(VOICE, `You format citations in the style asked for, exactly.
 

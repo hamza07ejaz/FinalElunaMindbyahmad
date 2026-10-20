@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { aiErrorMessage, clean, complete, extractJson, MODEL, readJson } from "../../../lib/ai";
 import { PRESENTATION_SYSTEM } from "../../../lib/prompts";
 import { guard } from "../../../lib/guard";
+import { SLIDE_LAYOUTS, type SlideLayout } from "../../../lib/export/pptx";
 import { captureRouteError } from "../../../lib/errors";
 
 export const maxDuration = 60;
@@ -31,8 +32,16 @@ Rules for the deck:
 - Plain text only. No markdown symbols, no emoji, no numbering inside the text.
 - Speaker notes: 2 or 3 sentences a presenter could actually say, adding something not already on the slide.
 
+Design the deck as well as writing it:
+- Slide 1 has layout "cover". The final slide has layout "closing".
+- In between, vary the layout. A deck of nothing but "bullets" is the deck everybody ignores.
+- Aim for roughly: one or two "section" dividers, two to four "image" slides, at most one
+  "feature", and "quote" or "stat" only where the material genuinely offers one.
+- Add "imageQuery" to the slides that would be clearer with a photograph.
+
 Return JSON exactly like:
-{"slides":[{"title":"...","bullets":["...","..."],"notes":"..."}]}`;
+{"slides":[{"title":"...","bullets":["...","..."],"notes":"...","layout":"bullets","imageQuery":"wind turbines field"}]}
+Only "title" and "bullets" are required. Leave "imageQuery" out when nothing could be photographed.`;
 
   try {
     const res = await complete({
@@ -51,13 +60,23 @@ Return JSON exactly like:
 
     const slides = (json.slides as Record<string, unknown>[])
       .slice(0, 15)
-      .map((s) => ({
-        title: String(s?.title ?? "Slide").slice(0, 120),
-        bullets: Array.isArray(s?.bullets)
-          ? (s.bullets as unknown[]).map((b) => String(b).replace(/^[-•*\d.\s]+/, "").trim()).filter(Boolean).slice(0, 6)
-          : [],
-        notes: s?.notes ? String(s.notes).slice(0, 600) : "",
-      }))
+      .map((s) => {
+        const layout = String(s?.layout ?? "").trim().toLowerCase();
+        // A query is only worth keeping if it could plausibly be searched for.
+        // One word is too vague to return a useful photo; a sentence means the
+        // model wrote a caption instead of a subject.
+        const query = String(s?.imageQuery ?? "").replace(/["\n]/g, " ").trim().slice(0, 60);
+        const words = query.split(/\s+/).filter(Boolean).length;
+        return {
+          title: String(s?.title ?? "Slide").slice(0, 120),
+          bullets: Array.isArray(s?.bullets)
+            ? (s.bullets as unknown[]).map((b) => String(b).replace(/^[-•*\d.\s]+/, "").trim()).filter(Boolean).slice(0, 6)
+            : [],
+          notes: s?.notes ? String(s.notes).slice(0, 600) : "",
+          layout: (SLIDE_LAYOUTS as string[]).includes(layout) ? (layout as SlideLayout) : undefined,
+          imageQuery: words >= 2 && words <= 6 ? query : undefined,
+        };
+      })
       .filter((s) => s.title || s.bullets.length);
 
     if (!slides.length) throw new Error("Empty deck");

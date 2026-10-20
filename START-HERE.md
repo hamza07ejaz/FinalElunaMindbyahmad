@@ -49,7 +49,7 @@ and one **AI provider** (Google AI Studio is free — see step 7).
 It takes about 10 seconds. `NOTICE` lines are normal — that is Postgres saying
 "that already existed, skipping". **Only a line starting with `ERROR` matters.**
 
-When it finishes you get one table with 12 rows. Every row should say `yes`:
+When it finishes you get one table with 13 rows. Every row should say `yes`:
 
 | # | check | ready |
 |---|---|---|
@@ -65,6 +65,7 @@ When it finishes you get one table with 12 rows. Every row should say `yes`:
 | 10 | AI keys | yes |
 | 11 | Career plans | yes |
 | 12 | Payment keys | yes |
+| 13 | Slide pictures | yes |
 
 If any row says `no`, scroll the output for the `ERROR` line and send me the
 whole line. Do not carry on with a `no`.
@@ -242,6 +243,19 @@ leave Base URL empty and use `gpt-4o-mini`.
 
 Now open the app and generate something — notes, or a chat message. If text
 comes back, the whole stack works.
+
+### Pictures on presentation slides (optional)
+
+Same page, lower down. Get a free key at **pexels.com/api** and paste it into
+**Pexels API key**, then press **Test it**. Slides that would be clearer with a
+photograph get one; without a key they are simply text slides.
+
+Pexels is used rather than a web image search on purpose: its licence permits
+commercial use, so a deck a student hands in is not somebody else's copyright.
+
+The switch below it lets students generate pictures with AI instead. That costs
+money per picture on your AI key, so it is off by default, and the cap next to
+it limits how many any one deck can use.
 
 ---
 

@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../_components/Icon";
 import { CopyButton, ErrorBox, Field, GenerateButton, Panel, Skeleton, ToolFrame, useToolRunner } from "../../_components/ToolUI";
-import { DECK_THEMES, downloadPptx, type DeckTheme, type Slide } from "../../../lib/export/pptx";
+import { DECK_THEMES, downloadPptx, resolveLayout, type DeckTheme, type Slide } from "../../../lib/export/pptx";
+import { SlideView } from "./SlideView";
 
 export default function PresentationPage() {
   const tool = useToolRunner<{ slides: Slide[] }>("/api/generate-presentation");
@@ -17,9 +18,64 @@ export default function PresentationPage() {
   const [exportErr, setExportErr] = useState("");
   const stage = useRef<HTMLDivElement>(null);
 
+  // What this installation can actually offer. Asked once, so the switch below
+  // is never shown on a site with no stock key configured.
+  const [can, setCan] = useState<{ stock: boolean; ai: boolean; max: number }>({ stock: false, ai: false, max: 0 });
+  const [useAi, setUseAi] = useState(false);
+  const [imgState, setImgState] = useState<"idle" | "loading" | "done">("idle");
+  const [imgNote, setImgNote] = useState("");
+
+  useEffect(() => {
+    fetch("/api/slide-images", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j) setCan({ stock: !!j.stock, ai: !!j.ai, max: j.max ?? 0 }); })
+      .catch(() => { /* pictures are optional; the tool works without them */ });
+  }, []);
+
+  /**
+   * Fetch the pictures after the deck is already on screen.
+   *
+   * Separate from generating the slides on purpose: the words are what the
+   * student is waiting for, and making them watch a second spinner for
+   * decoration would be the wrong trade. If this fails, the deck simply stays
+   * as text — every image layout falls back to bullets on its own.
+   */
+  const fetchImages = useCallback(async (deck: Slide[], ai: boolean) => {
+    const asks = deck
+      .map((s, index) => ({ index, query: s.imageQuery ?? "" }))
+      .filter((a) => a.query.trim().length > 1);
+    if (!asks.length) return;
+
+    setImgState("loading"); setImgNote("");
+    try {
+      const r = await fetch("/api/slide-images", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: asks, mode: ai ? "ai" : "stock" }),
+      });
+      const j = await r.json();
+      if (Array.isArray(j?.images) && j.images.length) {
+        setSlides((cur) => {
+          const next = [...cur];
+          for (const { index, image } of j.images as { index: number; image: Slide["image"] }[]) {
+            if (next[index]) next[index] = { ...next[index], image };
+          }
+          return next;
+        });
+      }
+      if (j?.note) setImgNote(String(j.note));
+    } catch {
+      setImgNote("Pictures could not be fetched. The deck is fine without them.");
+    } finally {
+      setImgState("done");
+    }
+  }, []);
+
   async function generate() {
     const j = await tool.run({ topic, slides: count, audience });
-    if (j) { setSlides(j.slides); setI(0); setEdit(false); setExportErr(""); }
+    if (j) {
+      setSlides(j.slides); setI(0); setEdit(false); setExportErr(""); setImgState("idle"); setImgNote("");
+      if (can.stock || can.ai) void fetchImages(j.slides, useAi && can.ai);
+    }
   }
 
   const go = useCallback((d: number) => setI((x) => Math.min(Math.max(x + d, 0), Math.max(slides.length - 1, 0))), [slides.length]);
@@ -37,6 +93,14 @@ export default function PresentationPage() {
 
   const cur = slides[i];
   const upd = (p: Partial<Slide>) => setSlides((s) => s.map((x, k) => (k === i ? { ...x, ...p } : x)));
+
+  // Cover and section slides sit on the deeper background, the way they do in
+  // the exported file. Asking the exporter which layout a slide got keeps the
+  // two in step instead of guessing from the index.
+  const coverish = (s: Slide, k: number) => {
+    const l = resolveLayout(s, k, slides.length);
+    return l === "cover" || l === "section";
+  };
 
   function addSlide() {
     setSlides((s) => { const n = [...s]; n.splice(i + 1, 0, { title: "New slide", bullets: ["Point one"], notes: "" }); return n; });
@@ -79,7 +143,16 @@ export default function PresentationPage() {
               <input type="range" min={5} max={12} value={count} onChange={(e) => setCount(+e.target.value)} className="mt-3 w-full accent-amber-400" />
             </Field>
           </div>
-          <div className="mt-4"><GenerateButton loading={tool.loading} disabled={!topic.trim()} onClick={generate} label="Generate slides" /></div>
+          <div className="mt-4 flex flex-wrap items-center gap-4">
+            <GenerateButton loading={tool.loading} disabled={!topic.trim()} onClick={generate} label="Generate slides" />
+            {can.ai && (
+              <label className="flex items-center gap-2 text-sm text-muted">
+                <input type="checkbox" className="accent-violet-400" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} />
+                Generate the pictures with AI
+                <span className="text-xs opacity-70">(slower, more on-topic)</span>
+              </label>
+            )}
+          </div>
         </Panel>
 
         <ErrorBox error={tool.error} upgrade={tool.upgrade} />
@@ -122,10 +195,16 @@ export default function PresentationPage() {
               ))}
             </div>
 
+            {imgState === "loading" && (
+              <p role="status" className="flex items-center gap-2 text-xs text-muted">
+                <span className="spinner" /> Finding pictures… the deck is ready to read meanwhile.
+              </p>
+            )}
+            {imgNote && <p className="text-xs text-muted">{imgNote}</p>}
             {exportErr && <ErrorBox error={exportErr} />}
 
-            <div ref={stage} className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10 p-[5%]"
-              style={{ background: `#${i === 0 ? (theme.titleBg ?? theme.bg) : theme.bg}` }}>
+            <div ref={stage} className={`relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10 ${edit ? "p-[5%]" : ""}`}
+              style={{ background: `#${coverish(cur, i) ? (theme.titleBg ?? theme.bg) : theme.bg}` }}>
               {edit ? (
                 <div className="relative h-full space-y-3 overflow-y-auto">
                   <input className="input !text-lg" value={cur.title} onChange={(e) => upd({ title: e.target.value })} placeholder="Slide title" />
@@ -133,17 +212,11 @@ export default function PresentationPage() {
                   <textarea className="input !min-h-0" rows={2} value={cur.notes ?? ""} onChange={(e) => upd({ notes: e.target.value })} placeholder="Speaker notes (optional)" />
                 </div>
               ) : (
-                <div key={i} className="page-enter relative flex h-full flex-col justify-center">
-                  <h2 className={i === 0 ? "text-[clamp(1.4rem,4.5vw,3rem)] font-semibold leading-tight" : "mb-[2%] text-[clamp(1.1rem,3vw,2.1rem)] font-semibold leading-tight"}
-                    style={{ color: `#${theme.title}`, fontFamily: "var(--font-fraunces), Georgia, serif" }}>
-                    {cur.title}
-                  </h2>
-                  <span className="mb-[3%] block h-[3px] w-[9%] rounded-full" style={{ background: `#${theme.accent}` }} />
-                  <ul className={i === 0 ? "text-[clamp(.75rem,1.7vw,1.15rem)]" : "list-disc space-y-[1.1%] pl-[4%] text-[clamp(.78rem,1.9vw,1.3rem)]"}
-                    style={{ color: `#${theme.body}` }}>
-                    {cur.bullets.filter(Boolean).map((b, k) => <li key={k} className={i === 0 ? "list-none" : ""} style={{ ["--tw-prose-bullets" as string]: `#${theme.accent}` }}>{b}</li>)}
-                  </ul>
-                  {i > 0 && <span className="absolute bottom-0 right-0 text-xs" style={{ color: `#${theme.accent}` }}>{i + 1}</span>}
+                <div key={i} className="page-enter h-full">
+                  <SlideView slide={cur} index={i} total={slides.length} theme={theme} />
+                  {i > 0 && (
+                    <span className="absolute bottom-[2.5%] right-[3%] text-xs" style={{ color: `#${theme.accent}` }}>{i + 1}</span>
+                  )}
                 </div>
               )}
             </div>
