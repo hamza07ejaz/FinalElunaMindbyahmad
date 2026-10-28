@@ -150,6 +150,17 @@ export async function GET(req: Request) {
       },
       ai,
       payments,
+      slidePictures: await (async () => {
+        const { imageConfig } = await import("../../../lib/images");
+        const c = await imageConfig(true);
+        return {
+          stockKeySet: !!c.stockKey,
+          stockKeyStatus: c.status,
+          aiPicturesEnabled: c.aiImagesEnabled,
+          maxPerDeck: c.maxImagesPerDeck,
+          problem: c.problem,
+        };
+      })(),
       limits: {
         chatFreePerDay: settings.rules.chat.freePerDay,
         notesFreePerDay: settings.rules.notes.freePerDay,

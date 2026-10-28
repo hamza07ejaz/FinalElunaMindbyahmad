@@ -36,12 +36,22 @@ export type ImageConfig = {
   maxImagesPerDeck: number;
   status: string;
   lastError: string | null;
+  /**
+   * Why there are no pictures, when there are none.
+   *
+   * This exists because the first version of this file swallowed a missing
+   * table and returned an empty config, and the tool then quietly produced
+   * decks with no images and said nothing at all. Silence is the wrong answer
+   * to "I set this up and it does not work": somebody has to be told that the
+   * migration never ran.
+   */
+  problem: string | null;
 };
 
 const EMPTY: ImageConfig = {
   stockKey: "", stockProvider: "pexels",
   aiImagesEnabled: false, maxImagesPerDeck: 4,
-  status: "untested", lastError: null,
+  status: "untested", lastError: null, problem: null,
 };
 
 const CACHE_MS = 10_000;
@@ -55,23 +65,41 @@ export async function imageConfig(force = false): Promise<ImageConfig> {
 
   let value = EMPTY;
   try {
-    const { data } = await supabaseAdmin()
+    const { data, error } = await supabaseAdmin()
       .from("image_config")
       .select("stock_key,stock_provider,ai_images_enabled,max_images_per_deck,status,last_error")
       .eq("id", 1).maybeSingle();
-    if (data) {
+
+    if (error) throw new Error(error.message);
+
+    if (!data) {
+      value = { ...EMPTY, problem: "The image settings row is missing. Run supabase/013_slide_images.sql." };
+    } else {
+      const stockKey = (data.stock_key as string) || "";
+      const aiEnabled = !!data.ai_images_enabled;
       value = {
-        stockKey: (data.stock_key as string) || "",
+        stockKey,
         stockProvider: (data.stock_provider as string) || "pexels",
-        aiImagesEnabled: !!data.ai_images_enabled,
+        aiImagesEnabled: aiEnabled,
         maxImagesPerDeck: Math.min(12, Math.max(0, Number(data.max_images_per_deck) || 0)),
         status: (data.status as string) || "untested",
         lastError: (data.last_error as string) ?? null,
+        problem: !stockKey && !aiEnabled
+          ? "No stock photo key is saved and AI pictures are switched off. Add a Pexels key in Admin → AI keys."
+          : null,
       };
     }
-  } catch {
-    // A missing table or an unreachable database means no pictures, not a
-    // broken presentation tool. The deck is the product; images are a garnish.
+  } catch (err) {
+    // Still never throws — a presentation tool must not fall over because a
+    // photo service is unreachable — but the reason is carried out now instead
+    // of being dropped on the floor.
+    const m = (err as Error)?.message ?? "";
+    value = {
+      ...EMPTY,
+      problem: /relation .* does not exist|could not find the table|schema cache/i.test(m)
+        ? "The image_config table does not exist. Run supabase/013_slide_images.sql in the Supabase SQL editor."
+        : `Image settings could not be read: ${m.slice(0, 160)}`,
+    };
   }
 
   cache = { at: Date.now(), value };
@@ -88,6 +116,9 @@ export function maskKey(k: string): string {
 /* ------------------------------------------------------------------ */
 
 const PEXELS = "https://api.pexels.com/v1/search";
+
+/** A photo is a nicety; it does not get to hold a request open. */
+const STOCK_TIMEOUT_MS = 8_000;
 
 type PexelsPhoto = {
   alt?: string;
@@ -110,7 +141,15 @@ export async function searchStock(
   if (!q || !key) return null;
 
   const url = `${PEXELS}?query=${encodeURIComponent(q)}&per_page=3&orientation=landscape&size=medium`;
-  const res = await fetch(url, { headers: { Authorization: key }, signal, cache: "no-store" });
+
+  // A deadline of its own, not just the request's. If the photo service stops
+  // answering, the deck should arrive without pictures rather than the whole
+  // request sitting open until the platform kills it.
+  const res = await fetch(url, {
+    headers: { Authorization: key },
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(STOCK_TIMEOUT_MS)]) : AbortSignal.timeout(STOCK_TIMEOUT_MS),
+    cache: "no-store",
+  });
 
   if (res.status === 401) throw new Error("The stock photo key was rejected. Check it in Admin → Images.");
   if (res.status === 429) throw new Error("The stock photo account is out of requests for now. It resets hourly.");

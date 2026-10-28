@@ -9,11 +9,12 @@ type Flags = {
   trialEnabled: boolean; trialDays: number; trialRequiresCard: boolean; supportEnabled: boolean;
   googleAuthEnabled: boolean;
 };
-type Analytics = { gaId: string; googleSiteVerification: string };
+type Analytics = { gaId: string; googleSiteVerification: string; gtmId: string; consentRequired: boolean };
 
 /** The same shapes the server will accept; checked here so the error is immediate. */
 const GA_ID = /^G-[A-Z0-9]{4,20}$/;
 const GSV = /^[A-Za-z0-9_-]{20,100}$/;
+const GTM_ID = /^GTM-[A-Z0-9]{4,12}$/;
 
 /** People paste the whole <meta> tag; take the token out of it rather than refusing. */
 function gsvToken(v: string) {
@@ -47,7 +48,7 @@ export default function BrandingPage() {
     fetch("/api/admin/settings", { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => {
-        if (j.settings) { setB(j.settings.branding); setF(j.settings.flags); setA(j.settings.analytics ?? { gaId: "", googleSiteVerification: "" }); }
+        if (j.settings) { setB(j.settings.branding); setF(j.settings.flags); setA(j.settings.analytics ?? { gaId: "", googleSiteVerification: "", gtmId: "", consentRequired: false }); }
       })
       .catch(() => toast("Could not load settings.", true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,7 +62,7 @@ export default function BrandingPage() {
       });
       const j = await r.json();
       if (!r.ok) { toast(j.error || "Could not save.", true); return; }
-      setB(j.settings.branding); setF(j.settings.flags); setA(j.settings.analytics ?? { gaId: "", googleSiteVerification: "" });
+      setB(j.settings.branding); setF(j.settings.flags); setA(j.settings.analytics ?? { gaId: "", googleSiteVerification: "", gtmId: "", consentRequired: false });
       toast("Saved.");
     } catch { toast("Network problem. Nothing was saved.", true); }
     finally { setSaving(""); }
@@ -73,6 +74,7 @@ export default function BrandingPage() {
   // value that is the wrong shape is worth warning about.
   const gaBad = a.gaId.trim() !== "" && !GA_ID.test(a.gaId.trim().toUpperCase());
   const gsvBad = a.googleSiteVerification.trim() !== "" && !GSV.test(gsvToken(a.googleSiteVerification));
+  const gtmBad = a.gtmId.trim() !== "" && !GTM_ID.test(a.gtmId.trim().toUpperCase());
 
   return (
     <Page title="Branding & site" sub="The name, logo and words on the public pages, plus the switches that control the whole site.">
@@ -119,10 +121,12 @@ export default function BrandingPage() {
           <Card>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="font-display text-lg text-paper">Google</h2>
-              <button type="button" className="btn btn-primary btn-sm" disabled={saving === "analytics" || gaBad || gsvBad}
+              <button type="button" className="btn btn-primary btn-sm" disabled={saving === "analytics" || gaBad || gsvBad || gtmBad}
                 onClick={() => save("analytics", {
                   gaId: a.gaId.trim().toUpperCase(),
                   googleSiteVerification: gsvToken(a.googleSiteVerification),
+                  gtmId: a.gtmId.trim().toUpperCase(),
+                  consentRequired: a.consentRequired,
                 })}>
                 {saving === "analytics" ? <><span className="spinner" /> Saving…</> : <><Icon name="save" size={14} /> Save</>}
               </button>
@@ -143,6 +147,40 @@ export default function BrandingPage() {
                 : "No analytics is loaded at all while this is empty — no Google script, no cookie."}
               {" "}Remember that tracking visitors is something your privacy policy has to mention.
             </p>
+
+            <div className="mt-5 border-t border-white/5 pt-5">
+              <Field label="Tag Manager container"
+                hint="GTM-XXXXXXX. With a container set, the measurement ID above is left to the container.">
+                <input className="input" value={a.gtmId} spellCheck={false} placeholder="GTM-XXXXXXX"
+                  onChange={(e) => setA({ ...a, gtmId: e.target.value })} />
+              </Field>
+              {gtmBad && (
+                <p role="alert" className="mt-2 text-xs text-red-300">
+                  A container ID starts with <code className="rounded bg-white/10 px-1">GTM-</code>.
+                </p>
+              )}
+              {a.gtmId && !gtmBad && a.gaId && (
+                <p className="mt-2 text-xs text-amber-200/80">
+                  Analytics will load through the container only. The measurement ID above is kept but not
+                  used directly, so visits cannot be counted twice — configure GA4 inside the container.
+                </p>
+              )}
+
+              <div className="mt-5 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm text-paper">Ask for consent before tracking</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    Shows a cookie bar and holds every marketing tag until the visitor answers.
+                    Required for visitors in the EU and UK; unnecessary for a Pakistan-only audience.
+                  </p>
+                </div>
+                <button type="button" role="switch" aria-checked={a.consentRequired} aria-label="Ask for consent before tracking"
+                  onClick={() => setA({ ...a, consentRequired: !a.consentRequired })}
+                  className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${a.consentRequired ? "bg-lamp" : "bg-white/15"}`}>
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${a.consentRequired ? "left-[22px]" : "left-0.5"}`} />
+                </button>
+              </div>
+            </div>
 
             <div className="mt-5 border-t border-white/5 pt-5">
               <Field label="Search Console verification"

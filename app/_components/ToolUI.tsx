@@ -6,6 +6,7 @@ import { TOOL_BY_KEY } from "./tools";
 import { useUsage } from "./UsageProvider";
 import { UpgradeButton } from "./Upgrade";
 import type { Feature } from "../../lib/plans";
+import { analytics } from "../../lib/analytics";
 
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`glass rounded-2xl p-5 sm:p-6 ${className}`}>{children}</div>;
@@ -96,6 +97,12 @@ export function ToolFrame({ toolKey, children, wide = false }: { toolKey: Featur
 }
 
 // Calls a tool API, handles login/limit errors, and refreshes the usage meter.
+/** "/dashboard/study-plan" -> "study-plan". Nothing else from the URL. */
+function toolName(path: string): string {
+  const seg = path.split("?")[0].split("/").filter(Boolean);
+  return (seg[seg.length - 1] || "unknown").slice(0, 40);
+}
+
 export function useToolRunner<T = unknown>(endpoint: string) {
   const { refresh } = useUsage();
   const pathname = usePathname();
@@ -116,6 +123,15 @@ export function useToolRunner<T = unknown>(endpoint: string) {
         return null;
       }
       refresh();
+      /*
+       * One study tool finished and returned something.
+       *
+       * Reported from the shared hook rather than from each tool, so a tool
+       * added later is measured without anyone remembering to add a line —
+       * and so the only thing that can be sent is the tool's name, taken from
+       * the route. The topic the student typed never leaves the page.
+       */
+      analytics.aiActionComplete(toolName(pathname));
       return json as T;
     } catch {
       setError("Network error. Please check your connection and try again.");

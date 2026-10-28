@@ -74,6 +74,34 @@ export async function POST(req: Request) {
           stripe_customer_id: idOf(s.customer as any),
           stripe_subscription_id: idOf(s.subscription as any),
         });
+
+        /*
+         * Write down the sale so a conversion tag can report it later with the
+         * amount Stripe actually charged.
+         *
+         * This is the only place in the app that knows a payment succeeded.
+         * Firing the tag from the success page instead would report a sale
+         * every time anyone opened that URL — on a refresh, on the back
+         * button, on a second device — and an ad platform cannot tell those
+         * apart from real ones.
+         *
+         * The session id is the primary key, so a webhook Stripe retries
+         * conflicts instead of adding a second row.
+         */
+        if (userId) {
+          const { error: convErr } = await db.from("conversions").insert({
+            id: s.id,
+            user_id: userId,
+            amount_total: s.amount_total ?? 0,
+            currency: (s.currency ?? "usd").toLowerCase(),
+          });
+          // A duplicate is the expected case on a retry. Anything else is
+          // logged and ignored: a missed conversion tag must never cost the
+          // customer the plan they paid for.
+          if (convErr && convErr.code !== "23505") {
+            console.error("conversion record failed:", convErr.message);
+          }
+        }
         break;
       }
       case "customer.subscription.created":

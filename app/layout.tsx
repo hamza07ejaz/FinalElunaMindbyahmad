@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Inter } from "next/font/google";
-import Script from "next/script";
+import { Tags, TagsNoScript } from "./_components/Tags";
+import { ConsentBanner } from "./_components/ConsentBanner";
 import "./globals.css";
 import { ErrorReporter } from "./_components/ErrorCatcher";
 import { getSettings } from "../lib/settings";
@@ -105,6 +106,7 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${display.variable} antialiased`}>
+        <TagsNoScript gtmId={analytics.gtmId} />
         <noscript>
           <style>{`.reveal{opacity:1!important;transform:none!important}`}</style>
         </noscript>
@@ -118,27 +120,8 @@ export default async function RootLayout({
         <ErrorReporter />
         {children}
 
-        {/*
-          Google Analytics, only when an ID is actually configured. afterInteractive
-          keeps it out of the critical path: the page is usable before any of this
-          is fetched, which matters more here than counting a visitor 200ms sooner.
-          gaId is validated against the GA4 shape in settings, so interpolating it
-          into both the URL and the inline call is safe.
-        */}
-        {analytics.gaId && (
-          <>
-            <Script
-              src={`https://www.googletagmanager.com/gtag/js?id=${analytics.gaId}`}
-              strategy="afterInteractive"
-            />
-            <Script id="ga-init" strategy="afterInteractive">{`
-window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-gtag('config', '${analytics.gaId}');
-            `}</Script>
-          </>
-        )}
+        <Tags gaId={analytics.gaId} gtmId={analytics.gtmId} consentRequired={analytics.consentRequired} />
+        {analytics.consentRequired && <ConsentBanner />}
       </body>
     </html>
   );

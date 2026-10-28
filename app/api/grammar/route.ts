@@ -3,6 +3,7 @@ import { aiErrorMessage, clean, complete, extractJson, MODEL, readJson } from ".
 import { GRAMMAR_SYSTEM } from "../../../lib/prompts";
 import { guard } from "../../../lib/guard";
 import { captureRouteError } from "../../../lib/errors";
+import { plainDeep, plainText } from "../../../lib/plain";
 
 // Vercel gives a function 10 seconds unless it is told otherwise, and an AI
 // answer of any length takes longer than that. Without this line the request is
@@ -46,7 +47,7 @@ ${text}`;
     });
     const parsed = extractJson(res.choices[0]?.message?.content || "", "object");
     if (!parsed) throw new Error("Invalid response from model");
-    return NextResponse.json(parsed);
+    return NextResponse.json(plainDeep(parsed, 8000));
   } catch (err) {
     console.error("grammar error:", err);
     captureRouteError(err, req, { route: "/api/grammar", status: 500 });

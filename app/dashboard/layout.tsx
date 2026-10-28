@@ -7,6 +7,7 @@ import { getSettings } from "../../lib/settings";
 import { ErrorBoundary } from "../_components/ErrorCatcher";
 import { UsageProvider } from "../_components/UsageProvider";
 import { Shell } from "./Shell";
+import { AuthEvent } from "../_components/AuthEvent";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dashboard — Eluna Mind", robots: { index: false } };
@@ -30,6 +31,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
       trialDays: settings.flags.trialDays,
       supportEnabled: settings.flags.supportEnabled,
     }}>
+      {/* Reports a Google sign-in once, then strips the marker from the URL. */}
+      <AuthEvent />
       <Shell><ErrorBoundary label="dashboard">{children}</ErrorBoundary></Shell>
     </UsageProvider>
   );

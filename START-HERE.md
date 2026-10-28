@@ -49,7 +49,7 @@ and one **AI provider** (Google AI Studio is free — see step 7).
 It takes about 10 seconds. `NOTICE` lines are normal — that is Postgres saying
 "that already existed, skipping". **Only a line starting with `ERROR` matters.**
 
-When it finishes you get one table with 13 rows. Every row should say `yes`:
+When it finishes you get one table with 14 rows. Every row should say `yes`:
 
 | # | check | ready |
 |---|---|---|
@@ -66,6 +66,7 @@ When it finishes you get one table with 13 rows. Every row should say `yes`:
 | 11 | Career plans | yes |
 | 12 | Payment keys | yes |
 | 13 | Slide pictures | yes |
+| 14 | Ad conversions | yes |
 
 If any row says `no`, scroll the output for the `ERROR` line and send me the
 whole line. Do not carry on with a `no`.

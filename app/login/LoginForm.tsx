@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase/browser";
 import { Icon } from "../_components/Icon";
 import { Logo } from "../_components/Logo";
+import { analytics } from "../../lib/analytics";
 
 /**
  * Whether to offer Google sign-in is an admin setting now, not a build-time
@@ -136,6 +137,7 @@ export function LoginForm() {
           setError(/invalid login/i.test(error.message) ? "That email and password do not match. Check both, or reset your password." : friendly(error.message));
           return;
         }
+        analytics.login("password");
         window.location.assign(next);
       } else {
         if (!signupsOpen) { setError("New sign-ups are paused right now. Please check back soon."); return; }
@@ -147,6 +149,7 @@ export function LoginForm() {
           setError(/already registered/i.test(error.message) ? "An account already uses this email. Try logging in instead." : friendly(error.message));
           return;
         }
+        analytics.signUp("password");
         if (data.session) window.location.assign(next);
         else setInfo("Account created. Check your email and click the confirmation link to continue.");
       }

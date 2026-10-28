@@ -3,6 +3,7 @@ import { MODEL, clean, complete, readJson } from "../../../lib/ai";
 import { PARAPHRASE_SYSTEM } from "../../../lib/prompts";
 import { guard } from "../../../lib/guard";
 import { captureRouteError } from "../../../lib/errors";
+import { plainDeep, plainText } from "../../../lib/plain";
 
 // Vercel gives a function 10 seconds unless it is told otherwise, and an AI
 // answer of any length takes longer than that. Without this line the request is
@@ -38,7 +39,9 @@ export async function POST(req: Request) {
     });
     const paraphrased = res.choices[0]?.message?.content?.trim();
     if (!paraphrased) throw new Error("Empty AI response");
-    return NextResponse.json({ paraphrased });
+    // A rewrite can be long, so the cap is generous; the point here is only
+    // to remove markup the plain-text view would print literally.
+    return NextResponse.json({ paraphrased: plainText(paraphrased, 20000) });
   } catch (err) {
     console.error("paraphrase error:", err);
     captureRouteError(err, req, { route: "/api/paraphrase", status: 500 });

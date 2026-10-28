@@ -3,6 +3,7 @@ import { aiErrorMessage, clean, complete, extractJson, MODEL, readJson } from ".
 import { FLASHCARDS_SYSTEM } from "../../../lib/prompts";
 import { guard } from "../../../lib/guard";
 import { captureRouteError } from "../../../lib/errors";
+import { plainDeep } from "../../../lib/plain";
 
 // Vercel gives a function 10 seconds unless it is told otherwise, and an AI
 // answer of any length takes longer than that. Without this line the request is
@@ -38,7 +39,7 @@ Do NOT include extra text before or after JSON.`;
     });
     const flashcards = extractJson<{ question: string; answer: string }[]>(res.choices[0]?.message?.content || "", "array");
     if (!Array.isArray(flashcards) || flashcards.length === 0) throw new Error("Invalid flashcards format");
-    return NextResponse.json({ flashcards });
+    return NextResponse.json({ flashcards: plainDeep(flashcards, 600) });
   } catch (err) {
     console.error("flashcards error:", err);
     captureRouteError(err, req, { route: "/api/flashcards", status: 500 });

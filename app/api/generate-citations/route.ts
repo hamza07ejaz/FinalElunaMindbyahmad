@@ -3,6 +3,7 @@ import { aiErrorMessage, clean, complete, extractJson, MODEL, readJson } from ".
 import { CITATIONS_SYSTEM } from "../../../lib/prompts";
 import { guard } from "../../../lib/guard";
 import { captureRouteError } from "../../../lib/errors";
+import { plainDeep, plainText } from "../../../lib/plain";
 
 // Vercel gives a function 10 seconds unless it is told otherwise, and an AI
 // answer of any length takes longer than that. Without this line the request is
@@ -40,7 +41,7 @@ Prefer well-known books, journals and reputable sites.`;
     const arr = extractJson<string[]>(res.choices[0]?.message?.content || "", "array");
     if (!Array.isArray(arr) || arr.length === 0) throw new Error("Invalid citations format");
     return NextResponse.json({
-      citations: arr.slice(0, count).map((t) => ({ text: String(t) })),
+      citations: arr.slice(0, count).map((t) => ({ text: plainText(t, 500) })),
       disclaimer: "AI-generated citations can contain errors. Verify each source before using it.",
     });
   } catch (err) {

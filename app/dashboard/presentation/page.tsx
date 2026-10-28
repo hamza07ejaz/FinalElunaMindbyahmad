@@ -20,7 +20,7 @@ export default function PresentationPage() {
 
   // What this installation can actually offer. Asked once, so the switch below
   // is never shown on a site with no stock key configured.
-  const [can, setCan] = useState<{ stock: boolean; ai: boolean; max: number }>({ stock: false, ai: false, max: 0 });
+  const [can, setCan] = useState<{ stock: boolean; ai: boolean; max: number; reason?: string }>({ stock: false, ai: false, max: 0 });
   const [useAi, setUseAi] = useState(false);
   const [imgState, setImgState] = useState<"idle" | "loading" | "done">("idle");
   const [imgNote, setImgNote] = useState("");
@@ -28,7 +28,7 @@ export default function PresentationPage() {
   useEffect(() => {
     fetch("/api/slide-images", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j) setCan({ stock: !!j.stock, ai: !!j.ai, max: j.max ?? 0 }); })
+      .then((j) => { if (j) setCan({ stock: !!j.stock, ai: !!j.ai, max: j.max ?? 0, reason: j.reason }); })
       .catch(() => { /* pictures are optional; the tool works without them */ });
   }, []);
 
@@ -75,6 +75,9 @@ export default function PresentationPage() {
     if (j) {
       setSlides(j.slides); setI(0); setEdit(false); setExportErr(""); setImgState("idle"); setImgNote("");
       if (can.stock || can.ai) void fetchImages(j.slides, useAi && can.ai);
+      // Nothing configured. Say so to whoever can fix it rather than producing
+      // a picture-less deck in silence and leaving them to guess.
+      else if (can.reason) setImgNote(can.reason);
     }
   }
 

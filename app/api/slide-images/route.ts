@@ -93,9 +93,17 @@ export async function GET(req: Request) {
   const g = await guard(req, "presentation");
   if (!g.ok) return g.res;
   const cfg = await imageConfig();
+
+  // Why there are no pictures goes only to the person who can do something
+  // about it. A student does not need to read about a missing migration, and a
+  // deck of text is a perfectly good deck; an admin who set this up and saw
+  // nothing happen very much does need to read it.
+  const isAdmin = g.auth.role === "admin";
+
   return NextResponse.json({
     stock: !!cfg.stockKey,
     ai: cfg.aiImagesEnabled,
     max: cfg.maxImagesPerDeck,
+    reason: isAdmin && cfg.problem ? cfg.problem : undefined,
   });
 }

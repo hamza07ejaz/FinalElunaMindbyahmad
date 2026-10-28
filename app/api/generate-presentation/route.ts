@@ -4,6 +4,7 @@ import { PRESENTATION_SYSTEM } from "../../../lib/prompts";
 import { guard } from "../../../lib/guard";
 import { SLIDE_LAYOUTS, type SlideLayout } from "../../../lib/export/pptx";
 import { captureRouteError } from "../../../lib/errors";
+import { plainDeep, plainText } from "../../../lib/plain";
 
 export const maxDuration = 60;
 
@@ -68,11 +69,11 @@ Only "title" and "bullets" are required. Leave "imageQuery" out when nothing cou
         const query = String(s?.imageQuery ?? "").replace(/["\n]/g, " ").trim().slice(0, 60);
         const words = query.split(/\s+/).filter(Boolean).length;
         return {
-          title: String(s?.title ?? "Slide").slice(0, 120),
+          title: plainText(s?.title ?? "Slide", 120),
           bullets: Array.isArray(s?.bullets)
-            ? (s.bullets as unknown[]).map((b) => String(b).replace(/^[-•*\d.\s]+/, "").trim()).filter(Boolean).slice(0, 6)
+            ? (s.bullets as unknown[]).map((b) => plainText(b, 220)).filter(Boolean).slice(0, 6)
             : [],
-          notes: s?.notes ? String(s.notes).slice(0, 600) : "",
+          notes: s?.notes ? plainText(s.notes, 600) : "",
           layout: (SLIDE_LAYOUTS as string[]).includes(layout) ? (layout as SlideLayout) : undefined,
           imageQuery: words >= 2 && words <= 6 ? query : undefined,
         };

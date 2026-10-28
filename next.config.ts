@@ -45,7 +45,22 @@ const csp = [
   // build time. The widening is small: 'unsafe-inline' is already here, so an
   // attacker who could inject a tag could already run code; this only adds one
   // more well-known origin they could load it from.
-  "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com",
+  [
+    "script-src 'self' 'unsafe-inline'",
+    // A tag manager does not load tags from its own domain. Google Ads
+    // conversions come from googleadservices, remarketing from doubleclick,
+    // the Meta pixel from connect.facebook.net — and a blocked tag fails
+    // silently, so the first anyone knows is a campaign reporting no
+    // conversions a fortnight later.
+    "https://www.googletagmanager.com",
+    "https://www.google-analytics.com",
+    "https://www.googleadservices.com",
+    "https://googleads.g.doubleclick.net",
+    "https://www.googletagservices.com",
+    "https://connect.facebook.net",
+    // Tag Assistant, so the agency's preview mode works against the live site.
+    "https://tagassistant.google.com",
+  ].join(" "),
   // Tailwind and the components set styles inline; there is no way around this one.
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
@@ -65,10 +80,28 @@ const csp = [
     "https://www.googletagmanager.com",
     "https://*.google-analytics.com",
     "https://*.analytics.google.com",
+    // Where conversions are actually reported to.
+    "https://www.googleadservices.com",
+    "https://googleads.g.doubleclick.net",
+    "https://*.doubleclick.net",
+    "https://www.google.com",
+    "https://connect.facebook.net",
+    "https://www.facebook.com",
+    "https://graph.facebook.com",
+    "https://tagassistant.google.com",
   ].filter(Boolean).join(" "),
-  // Nothing is embedded, and nothing embeds this. Stripe checkout and the
-  // billing portal are full redirects, not iframes.
-  "frame-src 'none'",
+  // Nothing of ours is embedded, and nothing embeds this: Stripe checkout and
+  // the billing portal are full redirects. The exceptions are the invisible
+  // frames the ad platforms use for conversion linking and the tag manager's
+  // own preview, which do not work at all under 'none'.
+  [
+    "frame-src",
+    "https://www.googletagmanager.com",
+    "https://tagassistant.google.com",
+    "https://googleads.g.doubleclick.net",
+    "https://*.doubleclick.net",
+    "https://www.facebook.com",
+  ].join(" "),
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",
@@ -95,6 +128,21 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  /**
+   * Keep the PDF stack out of the bundler.
+   *
+   * pdf-parse runs pdfjs, which needs DOMMatrix — a browser API that Node does
+   * not have. It borrows one from @napi-rs/canvas, which is a native .node
+   * binary loaded by a runtime require.
+   *
+   * Bundling breaks exactly that: the binary is not a module the tracer can
+   * follow, so on a deployed build the polyfill silently fails to load and the
+   * first PDF anyone uploads dies with "DOMMatrix is not defined" — a message
+   * with no PDF in it, on a path that works perfectly on a developer's laptop.
+   * Listing them here leaves them as real packages on disk, binary included.
+   */
+  serverExternalPackages: ["pdf-parse", "pdfjs-dist", "@napi-rs/canvas"],
+
   // The app's own 404 and error pages are the ones people should see.
   poweredByHeader: false,
 

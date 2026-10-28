@@ -23,6 +23,7 @@ The rest is reference:
 | `ADMIN_SETUP.md` | What each admin page does |
 | `TESTING.md` | The full pre-handover test list |
 | `HANDOFF.md` | What to give the client, and what to keep |
+| `TRACKING.md` | Conversion tracking: GTM, GA4, the data-layer events, consent |
 | `supabase/emails/README.md` | The auth email templates |
 
 ## Running it locally

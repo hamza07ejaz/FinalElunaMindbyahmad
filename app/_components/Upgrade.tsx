@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
 import { useUsageOptional } from "./UsageProvider";
+import { analytics } from "../../lib/analytics";
 
 export function useUpgrade() {
   const [busy, setBusy] = useState(false);
@@ -12,7 +13,13 @@ export function useUpgrade() {
       const r = await fetch("/api/create-checkout-session", { method: "POST" });
       if (r.status === 401) { window.location.href = "/login?next=/pricing"; return; }
       const j = await r.json();
-      if (r.ok && j.url) { window.location.href = j.url; return; }
+      if (r.ok && j.url) {
+        // Pushed before the redirect, while this page still exists. The tag
+        // manager reads the data layer synchronously, so there is no race.
+        analytics.beginCheckout(Number(j.value) || 0, String(j.currency || "USD"));
+        window.location.href = j.url;
+        return;
+      }
       setErr(j.error || "Could not start checkout.");
     } catch { setErr("Network error. Please try again."); }
     setBusy(false);

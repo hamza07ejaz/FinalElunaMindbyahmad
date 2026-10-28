@@ -83,7 +83,25 @@ export async function POST(req: Request) {
         .is("trial_started_at", null);
     }
 
-    return NextResponse.json({ url: session.url, trialDays: offerTrial ? flags.trialDays : 0 });
+    /*
+     * Hand back the amount as well as the link.
+     *
+     * A begin_checkout event with no value is reported as a zero-value
+     * checkout, and an ad platform optimising towards value learns from that
+     * zero. Reading it off the session Stripe just built means the figure is
+     * whatever Stripe will actually charge, rather than a number copied into
+     * the front end once and left behind at the next price change.
+     */
+    const minor = session.amount_total ?? 0;
+    const cur = (session.currency ?? "usd").toLowerCase();
+    const ZERO_DECIMAL = ["bif","clp","djf","gnf","jpy","kmf","krw","mga","pyg","rwf","ugx","vnd","vuv","xaf","xof","xpf"];
+
+    return NextResponse.json({
+      url: session.url,
+      trialDays: offerTrial ? flags.trialDays : 0,
+      value: ZERO_DECIMAL.includes(cur) ? minor : minor / 100,
+      currency: cur.toUpperCase(),
+    });
   } catch (err) {
     // The Stripe reason is logged for the admin and withheld from the customer:
     // "no such price in test mode" is actionable for one and alarming for the other.

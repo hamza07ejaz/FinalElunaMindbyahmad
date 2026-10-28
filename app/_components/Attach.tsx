@@ -2,6 +2,7 @@
 import { useCallback, useRef, useState } from "react";
 import { Icon, type IconName } from "./Icon";
 import { useUsage } from "./UsageProvider";
+import { analytics } from "../../lib/analytics";
 
 export type Attached = {
   id: string;
@@ -11,7 +12,7 @@ export type Attached = {
   pages?: number | null;
 };
 
-export const ACCEPT = ".pdf,.docx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.gif,.mp3,.m4a,.wav,.webm,.ogg";
+export const ACCEPT = ".pdf,.docx,.pptx,.xlsx,.xlsm,.epub,.rtf,.txt,.md,.csv,.tsv,.json,.srt,.vtt,.png,.jpg,.jpeg,.webp,.gif,.bmp,.heic,.mp3,.m4a,.wav,.webm,.ogg,.mp4,.mpga,.aac,.flac";
 export const ACCEPT_AUDIO = ".mp3,.m4a,.wav,.webm,.ogg,.mp4,.mpga";
 
 const ICON_BY_KIND: Record<Attached["kind"], IconName> = { document: "file", image: "image", audio: "mic" };
@@ -49,6 +50,9 @@ export function useAttach() {
         return null;
       }
       const att: Attached = { id: j.id, name: j.name, kind: j.kind, chars: j.chars, pages: j.pages };
+      // The kind and a size band only. The file name is very often the
+      // student's own name and their assignment title.
+      analytics.fileUpload(String(j.kind ?? "document"), f.size);
       setFile(att);
       return att;
     } catch {
@@ -133,7 +137,7 @@ export function AttachedChip({ file, onClear, note }: { file: Attached; onClear:
 
 /** A drop zone for the tool pages, where there is room for one. */
 export function DropZone({
-  onPick, busy, accept = ACCEPT, hint = "PDF, Word, text, image or audio · up to 25 MB",
+  onPick, busy, accept = ACCEPT, hint = "PDF, Word, PowerPoint, Excel, EPUB, text, image or audio · up to 25 MB",
 }: { onPick: (f: File) => void; busy?: boolean; accept?: string; hint?: string }) {
   const [over, setOver] = useState(false);
   const ref = useRef<HTMLInputElement>(null);

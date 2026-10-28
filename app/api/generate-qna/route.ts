@@ -3,6 +3,7 @@ import { aiErrorMessage, clean, complete, extractJson, MODEL, readJson } from ".
 import { QNA_SYSTEM } from "../../../lib/prompts";
 import { guard } from "../../../lib/guard";
 import { captureRouteError } from "../../../lib/errors";
+import { plainDeep } from "../../../lib/plain";
 
 // Vercel gives a function 10 seconds unless it is told otherwise, and an AI
 // answer of any length takes longer than that. Without this line the request is
@@ -45,7 +46,7 @@ Keep answers short, clear, and directly useful for studying.`;
     });
     const qna = extractJson<{ question: string; answer: string }[]>(res.choices[0]?.message?.content || "", "array");
     if (!Array.isArray(qna) || qna.length === 0) throw new Error("Invalid Q&A format");
-    return NextResponse.json({ qna });
+    return NextResponse.json({ qna: plainDeep(qna, 1200) });
   } catch (err) {
     console.error("qna error:", err);
     captureRouteError(err, req, { route: "/api/qna", status: 500 });

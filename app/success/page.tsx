@@ -3,6 +3,28 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "../_components/Icon";
 import { Logo } from "../_components/Logo";
+import { analytics } from "../../lib/analytics";
+
+/**
+ * Report the purchase, at most once ever.
+ *
+ * The decision is the server's: it marks the conversion reported as it hands
+ * it over, so reloading this page or opening it again later gets nothing back
+ * and no second event is pushed.
+ */
+async function reportPurchase() {
+  try {
+    const r = await fetch("/api/conversion", { method: "POST", cache: "no-store" });
+    if (!r.ok) return;
+    const { conversion } = await r.json();
+    if (conversion?.transaction_id) {
+      analytics.purchase(conversion.transaction_id, conversion.value, conversion.currency);
+    }
+  } catch {
+    // A conversion that cannot be reported is a reporting problem, not the
+    // customer's problem. They have their plan either way.
+  }
+}
 
 export default function SuccessPage() {
   const [state, setState] = useState<"checking" | "done" | "slow">("checking");
@@ -14,7 +36,14 @@ export default function SuccessPage() {
       try {
         const r = await fetch("/api/usage", { cache: "no-store" });
         if (r.status === 401) { window.location.href = "/login?next=/success"; return; }
-        if (r.ok && (await r.json()).plan === "premium") { setState("done"); return; }
+        if (r.ok && (await r.json()).plan === "premium") {
+          setState("done");
+          // The plan is premium, so the webhook has landed and the payment is
+          // real. Ask the server whether this particular purchase still needs
+          // reporting; it answers once and never again.
+          void reportPurchase();
+          return;
+        }
       } catch { /* retry */ }
       if (++tries >= 12) { setState("slow"); return; }
       setTimeout(tick, 2000);

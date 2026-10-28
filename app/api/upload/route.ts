@@ -2,14 +2,75 @@ import { NextResponse } from "next/server";
 import { guard } from "../../../lib/guard";
 import { supabaseAdmin } from "../../../lib/supabase/admin";
 import { MODEL, complete } from "../../../lib/ai";
-import { classify, extractDocx, extractPdf, extractPlainText, sniffLooksRight } from "../../../lib/extract";
+import {
+  classify, extractDocx, extractEpub, extractPdf, extractPlainText, extractPptx,
+  extractRtf, extractXlsx, renderPdfPages, sniffLooksRight,
+} from "../../../lib/extract";
 import { BUCKET, SIZE_LIMITS, storagePath } from "../../../lib/uploads";
 import { captureRouteError } from "../../../lib/errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const MIME_BY_KIND = { pdf: "document", docx: "document", text: "document", image: "image", audio: "audio" } as const;
+const MIME_BY_KIND = {
+  pdf: "document", docx: "document", pptx: "document", xlsx: "document",
+  epub: "document", rtf: "document", text: "document",
+  image: "image", audio: "audio",
+} as const;
+
+/** How many pages of a scanned PDF to read. Each one is a vision call. */
+const SCAN_PAGES = 5;
+
+const READ_IMAGE_PROMPT =
+  "Read this image for a student. Write out every word, number, formula and label exactly as shown, " +
+  "keeping the layout order. If it is a diagram, chart or handwriting, describe what it shows after " +
+  "the transcription. Do not solve anything.";
+
+/** One rendered page, read by the vision model. */
+async function readImage(dataUrl: string, page: number, of: number): Promise<string> {
+  const res = await complete({
+    model: MODEL, max_tokens: 1500, temperature: 0.2,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "text", text: `${READ_IMAGE_PROMPT} This is page ${page} of ${of}.` },
+        { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
+      ],
+    }],
+  });
+  const t = res.choices[0]?.message?.content?.trim() ?? "";
+  return t ? `--- Page ${page} ---\n${t}` : "";
+}
+
+/**
+ * Say what actually went wrong.
+ *
+ * Every extraction failure used to come back as "It may be damaged or password
+ * protected" — a guess, stated as fact, about a file that was usually neither.
+ * The one time it mattered most it was actively misleading: a server missing a
+ * library told hundreds of students their coursework was corrupt.
+ *
+ * The distinction worth drawing is whose problem it is. A password or a scan is
+ * something the person can act on. Anything else is ours, and saying so plainly
+ * is both more honest and more likely to get it reported.
+ */
+function explainExtractFailure(message: string, kind: string): string {
+  const m = message.toLowerCase();
+
+  if (/password|encrypted/.test(m))
+    return "That file is password protected. Remove the password and upload it again.";
+
+  if (/dommatrix|canvas|cannot find module|is not defined|not available on this server/.test(m))
+    return "This server cannot read that type of file at the moment. Nothing is wrong with your file — please report it.";
+
+  if (/invalid|corrupt|malformed|bad xref|unexpected end/.test(m))
+    return `That ${kind === "pdf" ? "PDF" : "file"} appears to be damaged. Try opening and re-saving it, then upload again.`;
+
+  if (/timeout|timed out|aborted/.test(m))
+    return "Reading that file took too long. A smaller file, or fewer pages, usually works.";
+
+  return "The file uploaded but could not be read. This is a problem on our side, not with your file.";
+}
 
 export async function POST(req: Request) {
   const g = await guard(req, "upload");
@@ -25,7 +86,7 @@ export async function POST(req: Request) {
   const kind = classify(file.type || "", file.name || "");
   if (kind === "unsupported")
     return NextResponse.json(
-      { error: "That file type is not supported. Use a PDF, Word file, text file, image or audio recording." },
+      { error: "That file type is not supported. Use a PDF, Word, PowerPoint, Excel, EPUB, RTF or text file, an image, or an audio recording." },
       { status: 415 }
     );
 
@@ -76,10 +137,47 @@ export async function POST(req: Request) {
   // Read the file. A failure here is the file's problem, not the upload's, so the
   // row stays and the user is told what went wrong.
   try {
-    let text = "", pages: number | null = null;
+    let text = "", pages: number | null = null, scanned = false;
 
-    if (kind === "pdf") { const r = await extractPdf(bytes); text = r.text; pages = r.pages ?? null; }
+    if (kind === "pdf") {
+      const r = await extractPdf(bytes);
+      text = r.text; pages = r.pages ?? null;
+
+      /*
+       * A PDF with no text layer is a picture of a page, not a page.
+       *
+       * These used to be a dead end: the upload failed and the student was told
+       * to "upload it as an image instead", which means opening the file and
+       * screenshotting every page by hand. Rendering the pages here and reading
+       * them the same way an uploaded photo is read turns the commonest kind of
+       * unusable coursework — the scanned handout — into something the tools
+       * can work with.
+       */
+      if (!text.trim()) {
+        const shots = await renderPdfPages(bytes, SCAN_PAGES);
+        if (shots.length) {
+          // allSettled, not all: five vision calls against a slow provider can
+          // outlast the function itself, and three pages of a scanned handout
+          // is worth far more to a student than an error saying the file could
+          // not be read. Whatever came back is kept, in page order.
+          const read = await Promise.allSettled(
+            shots.map((url, i) => readImage(url, i + 1, shots.length)),
+          );
+          text = read
+            .map((r) => (r.status === "fulfilled" ? r.value : ""))
+            .filter(Boolean)
+            .join("\n\n");
+          const missed = read.filter((r) => r.status === "rejected").length;
+          if (missed) console.warn(`scan: ${missed} of ${shots.length} pages could not be read`);
+          scanned = true;
+        }
+      }
+    }
     else if (kind === "docx") text = extractDocx(bytes).text;
+    else if (kind === "pptx") { const r = extractPptx(bytes); text = r.text; pages = r.pages ?? null; }
+    else if (kind === "xlsx") { const r = extractXlsx(bytes); text = r.text; pages = r.pages ?? null; }
+    else if (kind === "epub") { const r = extractEpub(bytes); text = r.text; pages = r.pages ?? null; }
+    else if (kind === "rtf") text = extractRtf(bytes).text;
     else if (kind === "text") text = extractPlainText(bytes).text;
     else if (kind === "image") {
       const b64 = Buffer.from(bytes).toString("base64");
@@ -105,7 +203,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         id: row.id, status: "failed",
         error: kind === "pdf"
-          ? "No text could be read. This PDF is probably a scan — upload it as an image instead."
+          ? "No text could be read from that PDF, and reading the pages as images did not work either."
           : "No readable text was found in that file.",
       }, { status: 422 });
     }
@@ -114,12 +212,19 @@ export async function POST(req: Request) {
     return NextResponse.json({
       id: row.id, name: safeName, kind: group, status: "ready", pages,
       chars: text.length, preview: text.slice(0, 280),
+      // Worth saying: the student should know the first pages were read by
+      // eye, and that a long scan was not read in full.
+      ...(scanned ? { scanned: true, scannedPages: Math.min(pages ?? SCAN_PAGES, SCAN_PAGES) } : {}),
     });
   } catch (err) {
     console.error("extraction failed:", err);
     captureRouteError(err, req, { route: "/api/upload", status: 500 });
-    await db.from("uploads").update({ status: "failed", error: "extract" }).eq("id", row.id);
-    return NextResponse.json({ id: row.id, status: "failed", error: "The file uploaded but could not be read. It may be damaged or password protected." }, { status: 422 });
+    // Store what actually went wrong, not the word "extract". The admin reads
+    // this column when someone reports a file that will not open, and a row
+    // saying "extract" has never once helped anybody.
+    const raw = (err as Error)?.message ?? String(err);
+    await db.from("uploads").update({ status: "failed", error: raw.slice(0, 300) }).eq("id", row.id);
+    return NextResponse.json({ id: row.id, status: "failed", error: explainExtractFailure(raw, kind) }, { status: 422 });
   }
 }
 

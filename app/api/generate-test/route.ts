@@ -3,6 +3,7 @@ import { aiErrorMessage, clean, complete, extractJson, MODEL, readJson } from ".
 import { TEST_SYSTEM } from "../../../lib/prompts";
 import { guard } from "../../../lib/guard";
 import { captureRouteError } from "../../../lib/errors";
+import { plainDeep } from "../../../lib/plain";
 
 // Vercel gives a function 10 seconds unless it is told otherwise, and an AI
 // answer of any length takes longer than that. Without this line the request is
@@ -122,7 +123,7 @@ Keep language concise and student-friendly.`
     const test = extractJson<any>(raw, "object");
     if (!test || !Array.isArray(test.mcqs)) throw new Error("Invalid test format");
 
-    return NextResponse.json({ test });
+    return NextResponse.json({ test: plainDeep(test, 1200) });
   } catch (err: any) {
     console.error("generate-test error:", err?.message || err);
     captureRouteError(err, req, { route: "/api/test", status: 500 });

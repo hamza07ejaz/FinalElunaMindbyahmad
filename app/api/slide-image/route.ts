@@ -38,7 +38,12 @@ export async function GET(req: Request) {
   }
 
   try {
-    const upstream = await fetch(target.toString(), { cache: "no-store", signal: req.signal });
+    const upstream = await fetch(target.toString(), {
+      cache: "no-store",
+      // The proxy gets its own deadline too: a stalled CDN must not keep a
+      // serverless function alive until the platform's own limit.
+      signal: AbortSignal.any([req.signal, AbortSignal.timeout(12_000)]),
+    });
     if (!upstream.ok || !upstream.body) {
       return new Response("The image could not be fetched.", { status: 502 });
     }

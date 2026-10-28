@@ -3,6 +3,7 @@ import { aiErrorMessage, clean, complete, extractJson, MODEL, readJson } from ".
 import { VISUAL_MAP_SYSTEM } from "../../../lib/prompts";
 import { guard } from "../../../lib/guard";
 import { captureRouteError } from "../../../lib/errors";
+import { plainDeep } from "../../../lib/plain";
 
 export const maxDuration = 60;
 
@@ -91,7 +92,7 @@ Return JSON exactly like:
       }
     }
 
-    return NextResponse.json({ nodes, root: root.id });
+    return NextResponse.json({ nodes: plainDeep(nodes, 200), root: root.id });
   } catch (err) {
     console.error("visual-map error:", err);
     captureRouteError(err, req, { route: "/api/visual-map", status: 500 });

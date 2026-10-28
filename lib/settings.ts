@@ -62,6 +62,17 @@ export type Analytics = {
    * the content="…" part, not the whole tag. Empty = no meta tag is emitted.
    */
   googleSiteVerification: string;
+  /**
+   * A Google Tag Manager container, like GTM-ABC1234.
+   *
+   * When this is set the direct GA4 tag is NOT loaded, whatever the
+   * measurement ID says, because a container that also configures GA4 would
+   * then report every page twice. The choice is one or the other, enforced
+   * here rather than left to whoever edits the settings next.
+   */
+  gtmId: string;
+  /** Ask for consent before any marketing tag runs. Needed for EEA traffic. */
+  consentRequired: boolean;
 };
 
 export type Settings = {
@@ -105,7 +116,7 @@ export const DEFAULT_FLAGS: Flags = {
   googleAuthEnabled: false,
 };
 
-export const DEFAULT_ANALYTICS: Analytics = { gaId: "", googleSiteVerification: "" };
+export const DEFAULT_ANALYTICS: Analytics = { gaId: "", googleSiteVerification: "", gtmId: "", consentRequired: false };
 
 export const DEFAULTS: Settings = {
   rules: DEFAULT_RULES,
@@ -182,6 +193,9 @@ const GA_ID = /^G-[A-Z0-9]{4,20}$/;
  */
 const GSV = /^[A-Za-z0-9_-]{20,100}$/;
 
+/** A container id. Same reasoning as the measurement ID: it reaches a script URL. */
+const GTM_ID = /^GTM-[A-Z0-9]{4,12}$/;
+
 function mergeAnalytics(stored: unknown): Analytics {
   const a = merge(DEFAULT_ANALYTICS, stored);
 
@@ -192,9 +206,13 @@ function mergeAnalytics(stored: unknown): Analytics {
   const wrapped = /content=["']([^"']+)["']/.exec(token);
   if (wrapped) token = wrapped[1].trim();
 
+  const gtm = typeof a.gtmId === "string" ? a.gtmId.trim().toUpperCase() : "";
+
   return {
     gaId: GA_ID.test(id) ? id : "",
     googleSiteVerification: GSV.test(token) ? token : "",
+    gtmId: GTM_ID.test(gtm) ? gtm : "",
+    consentRequired: typeof a.consentRequired === "boolean" ? a.consentRequired : false,
   };
 }
 
