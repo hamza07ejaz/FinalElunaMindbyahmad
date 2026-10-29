@@ -7,6 +7,7 @@ import { Icon } from "../_components/Icon";
 import { Logo } from "../_components/Logo";
 import { TOOLS } from "../_components/tools";
 import { useUsage } from "../_components/UsageProvider";
+import { Bell } from "../_components/Bell";
 import { TrialBadge, UpgradeButton, trialDaysLeft } from "../_components/Upgrade";
 
 function NavLink({ href, icon, label, active, locked, onClick }: { href: string; icon: Parameters<typeof Icon>[0]["name"]; label: string; active: boolean; locked?: boolean; onClick?: () => void }) {
@@ -86,7 +87,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-      <div className="flex items-center justify-between px-1 pt-1"><Logo href="/dashboard" size={32} /></div>
+      <div className="flex items-center justify-between px-1 pt-1"><Logo href="/dashboard" size={32} /><Bell /></div>
       <nav className="space-y-1">
         <NavLink href="/dashboard" icon="home" label="Dashboard" active={is("/dashboard")} onClick={onNavigate} />
         <NavLink href="/dashboard/chat" icon="chat" label="AI Tutor Chat" active={is("/dashboard/chat")} onClick={onNavigate} />
@@ -148,6 +149,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-white/[0.07] bg-[#07070d]/80 px-4 backdrop-blur-xl lg:hidden">
         <button type="button" onClick={() => setOpen(true)} aria-label="Open menu" className="rounded-lg p-2 text-paper/85 hover:bg-white/10"><Icon name="menu" size={22} /></button>
         <Logo href="/dashboard" size={28} />
+        <Bell className="ml-auto" />
       </header>
 
       {open && (

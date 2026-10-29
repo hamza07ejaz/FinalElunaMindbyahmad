@@ -339,7 +339,22 @@ export default function SiteContentPage() {
           </Card>
 
           <Card className="lg:col-span-2">
-            <h2 className="mb-4 font-display text-base text-paper">How it works</h2>
+            <h2 className="mb-1 font-display text-base text-paper">How it works</h2>
+
+            <div className="mb-5 rounded-xl border border-white/[0.07] p-3">
+              <p className="mb-2 text-sm text-paper">Video above the steps</p>
+              <input className="input !py-2 !text-sm" placeholder="YouTube, Vimeo or a direct .mp4 link"
+                value={s.demo?.videoUrl ?? ""}
+                onChange={(e) => set("demo", { ...(s.demo ?? { videoUrl: "", poster: "", caption: "" }), videoUrl: e.target.value })} />
+              <input className="input mt-2 !py-2 !text-sm" placeholder="Caption under it (optional)"
+                value={s.demo?.caption ?? ""}
+                onChange={(e) => set("demo", { ...(s.demo ?? { videoUrl: "", poster: "", caption: "" }), caption: e.target.value })} />
+              <p className="mt-2 text-xs text-muted">
+                Leave the link empty and an animation of the three steps is shown instead, so the
+                section is never a blank box waiting on a video.
+              </p>
+            </div>
+
             <div className="space-y-3">
               {s.how.items.map((st, i) => (
                 <div key={i} className="grid gap-2 rounded-xl border border-white/[0.07] p-3 sm:grid-cols-[2rem_1fr_auto] sm:items-start">

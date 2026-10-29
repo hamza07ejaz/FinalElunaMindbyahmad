@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { stripe, stripeConfig } from "../../../lib/stripe";
 import { supabaseAdmin } from "../../../lib/supabase/admin";
 import { captureError } from "../../../lib/errors";
+import { notes } from "../../../lib/notify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,6 +101,14 @@ export async function POST(req: Request) {
           // customer the plan they paid for.
           if (convErr && convErr.code !== "23505") {
             console.error("conversion record failed:", convErr.message);
+          }
+
+          // Only on the first insert, so a webhook Stripe retries does not
+          // ring the bell a second time.
+          if (!convErr) {
+            notes.planChanged(userId, "premium");
+            const paid = ((s.amount_total ?? 0) / 100).toFixed(2);
+            notes.payment(s.customer_details?.email ?? "a customer", `${paid} ${(s.currency ?? "usd").toUpperCase()}`);
           }
         }
         break;

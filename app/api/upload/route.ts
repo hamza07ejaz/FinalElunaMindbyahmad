@@ -8,6 +8,7 @@ import {
 } from "../../../lib/extract";
 import { BUCKET, SIZE_LIMITS, storagePath } from "../../../lib/uploads";
 import { captureRouteError } from "../../../lib/errors";
+import { notes } from "../../../lib/notify";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -209,6 +210,7 @@ export async function POST(req: Request) {
     }
 
     await db.from("uploads").update({ status: "ready", extracted_text: text, pages }).eq("id", row.id);
+    notes.uploadReady(userId, safeName);
     return NextResponse.json({
       id: row.id, name: safeName, kind: group, status: "ready", pages,
       chars: text.length, preview: text.slice(0, 280),
@@ -224,6 +226,7 @@ export async function POST(req: Request) {
     // saying "extract" has never once helped anybody.
     const raw = (err as Error)?.message ?? String(err);
     await db.from("uploads").update({ status: "failed", error: raw.slice(0, 300) }).eq("id", row.id);
+    notes.uploadFailed(userId, safeName, explainExtractFailure(raw, kind));
     return NextResponse.json({ id: row.id, status: "failed", error: explainExtractFailure(raw, kind) }, { status: 422 });
   }
 }

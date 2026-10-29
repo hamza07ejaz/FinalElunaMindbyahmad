@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { logAdmin } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase/admin";
 import { MAX_BODY, cleanText, getMessages, isStatus } from "../../../../../lib/support";
+import { notes } from "../../../../../lib/notify";
 import { adminOrFail, body } from "../../_helpers";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +63,9 @@ export async function POST(req: Request, { params }: Ctx) {
       console.error("admin support reply failed:", error.message);
       return NextResponse.json({ error: "Could not send the reply." }, { status: 500 });
     }
+    // The student is not sitting on the ticket page waiting; the bell is how
+    // they find out an answer arrived.
+    if (ticket.user_id) notes.supportReply(ticket.user_id as string, id);
   }
 
   // A reply marks the ticket answered unless the status was set explicitly.

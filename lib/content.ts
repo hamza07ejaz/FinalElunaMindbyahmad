@@ -36,6 +36,8 @@ export type SiteContent = {
   marquee: string[];
   features: SectionIntro & { items: FeatureItem[] };
   how: SectionIntro & { items: StepItem[] };
+  /** Shown above the three steps. Empty videoUrl = the built animation. */
+  demo: { videoUrl: string; poster: string; caption: string };
   proof: { label: string; items: string[] };
   pricing: SectionIntro;
   faq: SectionIntro & { items: FaqItem[] };
@@ -102,6 +104,8 @@ export const DEFAULT_SITE: SiteContent = {
       { title: "Plans the week before the exam", body: "A day-by-day plan built around your exam date and the hours you actually have.", icon: "plan" },
     ],
   },
+
+  demo: { videoUrl: "", poster: "", caption: "" },
 
   how: {
     kicker: "Three steps",
@@ -213,6 +217,16 @@ export function normaliseSite(stored: unknown): SiteContent {
       title: str(s.features.title, 120, d.features.title),
       items: (Array.isArray(s.features.items) ? s.features.items : d.features.items)
         .filter((i) => i && typeof i.title === "string" && i.title.trim()).slice(0, 12),
+    },
+    demo: {
+      // A URL an admin typed, so it is checked rather than trusted: only http
+      // and https reach an iframe src or a <video>, and a javascript: URL
+      // there would be script injection on the home page.
+      videoUrl: /^https?:\/\//i.test(String(s.demo?.videoUrl ?? "").trim())
+        ? String(s.demo.videoUrl).trim().slice(0, 400) : "",
+      poster: /^https?:\/\//i.test(String(s.demo?.poster ?? "").trim())
+        ? String(s.demo.poster).trim().slice(0, 400) : "",
+      caption: str(s.demo?.caption, 160, ""),
     },
     how: {
       ...s.how,

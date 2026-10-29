@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "../_components/Icon";
 import { Logo } from "../_components/Logo";
+import { Bell } from "../_components/Bell";
 import { ROLE_LABEL, type Permission, type Role } from "../../lib/roles";
 
 const NAV: { href: string; label: string; icon: IconName; needs: Permission }[] = [
@@ -66,7 +67,10 @@ export function AdminShell({ email, role, permissions, children }:
   return (
     <div className="min-h-dvh">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-white/10 bg-[#0a0f1f]/80 p-4 backdrop-blur-xl lg:flex">
-        <div className="mb-6 px-1"><Logo href="/admin" size={30} /><p className="mt-1 text-xs text-lamp">{ROLE_LABEL[role]} panel</p></div>
+        <div className="mb-6 flex items-start justify-between px-1">
+          <div><Logo href="/admin" size={30} /><p className="mt-1 text-xs text-lamp">{ROLE_LABEL[role]} panel</p></div>
+          <Bell />
+        </div>
         {nav}
         <div className="mt-auto space-y-1 pt-4">
           <p className="truncate px-3 text-xs text-muted">{email}</p>
@@ -81,7 +85,8 @@ export function AdminShell({ email, role, permissions, children }:
           <Icon name={open ? "x" : "menu"} size={22} />
         </button>
         <Logo href="/admin" size={26} />
-        <span className="chip chip-brand ml-auto">{ROLE_LABEL[role]}</span>
+        <Bell className="ml-auto" />
+        <span className="chip chip-brand">{ROLE_LABEL[role]}</span>
       </header>
       {open && <div className="page-enter border-b border-white/10 p-3 lg:hidden">{nav}</div>}
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "../../../lib/auth";
 import { getSettings } from "../../../lib/settings";
 import { supabaseAdmin } from "../../../lib/supabase/admin";
+import { notes } from "../../../lib/notify";
 import {
   CATEGORIES, MAX_BODY, MAX_SUBJECT, cleanText, isCategory, supportLimitHit,
 } from "../../../lib/support";
@@ -67,6 +68,8 @@ export async function POST(req: Request) {
     unread_for_staff: true,
     unread_for_user: false,
   }).select("id,subject,category,status,created_at,last_reply_at").single();
+
+  if (!error && ticket) notes.newTicket(ticket.id as string, subject);
 
   if (error || !ticket) {
     console.error("support ticket insert failed:", error?.message);

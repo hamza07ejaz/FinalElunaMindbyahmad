@@ -28,6 +28,17 @@ async function reportPurchase() {
 
 export default function SuccessPage() {
   const [state, setState] = useState<"checking" | "done" | "slow">("checking");
+  // Read from the admin settings rather than written into the sentence, which
+  // is how this page ended up telling people to write to an address nobody
+  // had used for months.
+  const [supportEmail, setSupportEmail] = useState("hello@elunamind.com");
+
+  useEffect(() => {
+    fetch("/api/signup-status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.supportEmail) setSupportEmail(j.supportEmail); })
+      .catch(() => { /* the default stands */ });
+  }, []);
 
   useEffect(() => {
     let tries = 0, stop = false;
@@ -60,7 +71,7 @@ export default function SuccessPage() {
         <div className="mb-6 flex justify-center"><Logo /></div>
         {state === "checking" && (<><div className="mx-auto mb-5 grid h-16 w-16 place-items-center"><span className="spinner !h-8 !w-8" /></div><h1 className="text-xl font-semibold text-paper">Confirming your payment…</h1><p className="mt-2 text-sm text-muted">This usually takes a few seconds.</p></>)}
         {state === "done" && (<><div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full bg-emerald-500/20 text-emerald-300"><Icon name="check" size={32} stroke={2.4} /></div><h1 className="text-2xl font-semibold text-paper">Welcome to Premium!</h1><p className="mt-2 text-sm text-muted">All study tools and higher limits are now unlocked.</p><Link href="/dashboard" className="btn btn-primary mt-7 w-full">Go to dashboard</Link></>)}
-        {state === "slow" && (<><h1 className="text-xl font-semibold text-paper">Payment received, still activating</h1><p className="mt-2 text-sm text-muted">Your plan can take a minute to update. Open the dashboard and refresh in a moment. If it does not change, email support@elunamind.app.</p><Link href="/dashboard" className="btn btn-primary mt-7 w-full">Go to dashboard</Link></>)}
+        {state === "slow" && (<><h1 className="text-xl font-semibold text-paper">Payment received, still activating</h1><p className="mt-2 text-sm text-muted">Your plan can take a minute to update. Open the dashboard and refresh in a moment. If it does not change, email {supportEmail}.</p><Link href="/dashboard" className="btn btn-primary mt-7 w-full">Go to dashboard</Link></>)}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
+import { useGuide, type GuideStop } from "./useGuide";
 
 /**
  * The bot in the corner.
@@ -14,6 +15,10 @@ import { Icon } from "../Icon";
  * Answers come from /api/bot: the admin's written answers first, the AI only
  * for what they do not cover.
  */
+
+/** Where the launcher rests at either end of its travel. */
+const TOP_PX = 86;      // clear of the sticky header
+const BOTTOM_PX = 86;   // the corner it has always lived in
 
 type Msg = { id: number; role: "bot" | "user"; text: string };
 type Mood = "idle" | "listening" | "thinking" | "pleased";
@@ -91,7 +96,8 @@ function Face({ mood, gaze, size = 44 }: { mood: Mood; gaze: { x: number; y: num
 
 /* ------------------------------------------------------------------ */
 
-export function SiteBot({ name, greeting, siteName }: { name: string; greeting: string; siteName: string }) {
+export function SiteBot({ name, greeting, siteName, stops = [] }:
+  { name: string; greeting: string; siteName: string; stops?: GuideStop[] }) {
   const [open, setOpen] = useState(false);
   const [mood, setMood] = useState<Mood>("idle");
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
@@ -99,6 +105,10 @@ export function SiteBot({ name, greeting, siteName }: { name: string; greeting: 
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Where the launcher sits, and what it is saying about the section on
+  // screen. Paused while the panel is open: it is a conversation then.
+  const { progress, said, dismiss } = useGuide(stops, open);
 
   const launcherRef = useRef<HTMLButtonElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -197,16 +207,66 @@ export function SiteBot({ name, greeting, siteName }: { name: string; greeting: 
         onPointerLeave={() => mood === "listening" && setMood("idle")}
         aria-label={open ? `Close ${name}` : `Ask ${name} about ${siteName}`}
         aria-expanded={open}
-        className="group fixed bottom-5 right-5 z-40 grid h-[58px] w-[58px] place-items-center rounded-full sm:bottom-7 sm:right-7"
+        className="group fixed right-5 z-40 grid h-[58px] w-[58px] place-items-center rounded-full sm:right-7"
+        style={{
+          /*
+           * Level with the header at the top of the page, in the usual corner
+           * once the reader has moved. Driven by `top` rather than a transform
+           * so the speech bubble beside it can be positioned against the same
+           * number without the two drifting apart.
+           */
+          top: `calc(${TOP_PX}px + (100vh - ${TOP_PX + BOTTOM_PX}px) * ${progress})`,
+          transition: "top 420ms cubic-bezier(.22,.61,.36,1)",
+        }}
       >
         {/* the spectrum ring, slowly turning */}
         <span className="orb-ring absolute inset-0 rounded-full opacity-90" />
-        <span className="absolute inset-[2px] rounded-full bg-[#070a17]" />
-        <span className="absolute inset-0 rounded-full transition-shadow duration-300 group-hover:shadow-[0_0_34px_-4px_rgba(139,108,255,.85)]" />
+        {/*
+          Lit, not black. The interior used to be #070a17 — the page background
+          — so on a dark page the launcher read as a thin ring around a hole
+          and people did not see there was anything there to press.
+        */}
+        <span className="absolute inset-[2px] rounded-full bg-[radial-gradient(circle_at_30%_25%,#7C5CFF_0%,#5B3FD6_45%,#2A1B66_100%)]" />
+        <span className="absolute inset-0 rounded-full shadow-[0_8px_30px_-6px_rgba(124,92,255,.65)] transition-shadow duration-300 group-hover:shadow-[0_0_38px_-4px_rgba(139,108,255,.95)]" />
         {open
           ? <Icon name="x" size={20} className="relative z-10 text-paper" />
           : <Face mood={mood} gaze={gaze} />}
       </button>
+
+      {/* ---------------- what it is saying about this section ---------------- */}
+      {said && !open && (
+        <div
+          role="status"
+          className="pop-in fixed right-[5.6rem] z-40 w-[min(17rem,calc(100vw-8rem))] rounded-2xl border border-violet-400/25 bg-[#120f26]/95 px-3.5 py-2.5 shadow-[0_18px_50px_-18px_rgba(124,92,255,.8)] backdrop-blur-xl sm:right-[6.4rem]"
+          style={{
+            /*
+             * Centred on the launcher, and kept inside the window.
+             *
+             * Following the launcher's own `top` put the bubble's top edge
+             * level with it, so once the launcher reached the corner the text
+             * ran off the bottom of the screen — the last line of every
+             * message was cut in half. It is now centred on the launcher and
+             * its centre is clamped, which keeps both ends on screen whether
+             * the launcher is up by the header or down in the corner.
+             */
+            top: `min(calc(${TOP_PX + 29}px + (100vh - ${TOP_PX + BOTTOM_PX}px) * ${progress}), calc(100vh - 92px))`,
+            transform: "translateY(-50%)",
+            transition: "top 420ms cubic-bezier(.22,.61,.36,1)",
+          }}
+        >
+          <p className="pr-4 text-[0.8rem] leading-relaxed text-paper/90">{said}</p>
+          <button
+            type="button"
+            onClick={dismiss}
+            aria-label="Stop the tour"
+            className="absolute right-1.5 top-1.5 rounded-md p-1 text-muted transition-colors hover:text-paper"
+          >
+            <Icon name="x" size={12} />
+          </button>
+          {/* the little tail pointing at the launcher */}
+          <span className="absolute -right-1 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-b border-r border-violet-400/25 bg-[#120f26]" />
+        </div>
+      )}
 
       {/* ---------------- panel ---------------- */}
       {open && (
@@ -217,7 +277,7 @@ export function SiteBot({ name, greeting, siteName }: { name: string; greeting: 
           <header className="flex items-center gap-3 border-b border-white/[0.07] px-4 py-3">
             <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full">
               <span className="orb-ring absolute inset-0 rounded-full opacity-80" />
-              <span className="absolute inset-[2px] rounded-full bg-[#070a17]" />
+              <span className="absolute inset-[2px] rounded-full bg-[radial-gradient(circle_at_30%_25%,#7C5CFF_0%,#5B3FD6_45%,#2A1B66_100%)]" />
               <Face mood={mood} gaze={gaze} size={30} />
             </span>
             <div className="min-w-0">

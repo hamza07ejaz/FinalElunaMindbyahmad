@@ -89,7 +89,7 @@ export const DEFAULT_BRANDING: Branding = {
   siteName: "Eluna Mind",
   tagline: "An AI tutor that reads your actual course material — for anyone studying anything.",
   logoUrl: "",
-  supportEmail: "support@elunamind.app",
+  supportEmail: "hello@elunamind.com",
   heroHeadline: "The tutor who is still awake at 1 a.m.",
   heroSubline:
     "Upload the chapter, the slide deck or the lecture recording and get it explained step by step. Turn it into notes, quiz yourself, and plan the week before your exam.",

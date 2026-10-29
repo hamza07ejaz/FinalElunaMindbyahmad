@@ -7,6 +7,7 @@ import { Hero } from "./_components/landing/Hero";
 import { CtaBand, Features, HowItWorks, Marquee, ProofStrip, SectionHead, Seam } from "./_components/landing/Sections";
 import { PricingCards } from "./_components/landing/PricingCards";
 import { Faq } from "./_components/landing/Faq";
+import { Demo } from "./_components/landing/Demo";
 import { Footer } from "./_components/landing/Footer";
 import { SiteBot } from "./_components/landing/SiteBot";
 
@@ -50,6 +51,8 @@ export default async function Landing() {
         {show.how && (
           <>
             <Seam />
+            {/* Shown above the steps, so the page demonstrates before it explains. */}
+            <Demo videoUrl={site.demo.videoUrl} poster={site.demo.poster} caption={site.demo.caption} />
             <HowItWorks intro={site.how} items={site.how.items} />
           </>
         )}
@@ -82,7 +85,24 @@ export default async function Landing() {
       </main>
 
       <Footer />
-      {show.bot && <SiteBot name={site.bot.name} greeting={site.bot.greeting} siteName={branding.siteName} />}
+      {show.bot && (
+        <SiteBot
+          name={site.bot.name}
+          greeting={site.bot.greeting}
+          siteName={branding.siteName}
+          /*
+           * What it says as each section arrives. Built from the sections that
+           * are actually switched on, so a site with the pricing block hidden
+           * does not have its assistant announce pricing to an empty page.
+           */
+          stops={[
+            show.features && { id: "features", text: "These are the tools. Each one works on whatever you upload \u2014 your own notes, not a textbook someone else wrote." },
+            show.how && { id: "how", text: "Three steps, and the first one is just dragging in a file. Nothing to install." },
+            show.pricing && { id: "pricing", text: "The free plan refills every day. Premium is for exam weeks, when the daily limits stop being enough." },
+            show.faq && { id: "faq", text: "The questions people actually ask before signing up. Mine is here too if yours is not." },
+          ].filter(Boolean) as { id: string; text: string }[]}
+        />
+      )}
     </div>
   );
 }

@@ -101,6 +101,11 @@ const csp = [
     "https://googleads.g.doubleclick.net",
     "https://*.doubleclick.net",
     "https://www.facebook.com",
+    // The demo video above the three steps. nocookie is the host the embed
+    // builder produces, so this is the one that has to be listed.
+    "https://www.youtube-nocookie.com",
+    "https://www.youtube.com",
+    "https://player.vimeo.com",
   ].join(" "),
   "frame-ancestors 'none'",
   "object-src 'none'",
