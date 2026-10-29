@@ -187,9 +187,36 @@ alter table public.profiles add column if not exists blocked_reason text;
 alter table public.profiles add column if not exists admin_note text;
 alter table public.profiles add column if not exists last_seen_at timestamptz;
 
--- 'user' | 'admin'  /  'active' | 'blocked'
+-- 'user' | 'sub_admin' | 'admin'  /  'active' | 'blocked'
+--
+-- This file used to allow only 'user' and 'admin', because sub-admins did not
+-- exist when it was written. Migration 007 added the role and widened the
+-- constraint — which was fine going forwards and wrong on the way back: this
+-- file runs FIRST, so re-running the whole script on a database that already
+-- had a sub-admin failed right here, with "check constraint
+-- profiles_role_check is violated by some row" and nothing to say which row or
+-- why. The script is meant to be safe to run again at any time, so the
+-- earliest statement has to accept every role the app has ever had.
+--
+-- Anything unrecognised is repaired rather than left to block the migration.
+-- A role typed by hand into the SQL editor — 'Admin', ' admin', 'owner' —
+-- would otherwise stop the entire script on a healthy installation.
+update public.profiles
+   set role = case
+     when lower(btrim(coalesce(role, ''))) in ('admin','administrator','owner','superadmin') then 'admin'
+     when lower(btrim(coalesce(role, ''))) in ('sub_admin','subadmin','sub-admin','staff','moderator') then 'sub_admin'
+     else 'user'
+   end
+ where role is null
+    or role not in ('user','sub_admin','admin');
+
+update public.profiles
+   set status = case when lower(btrim(coalesce(status, ''))) = 'blocked' then 'blocked' else 'active' end
+ where status is null
+    or status not in ('active','blocked');
+
 alter table public.profiles drop constraint if exists profiles_role_check;
-alter table public.profiles add constraint profiles_role_check check (role in ('user','admin'));
+alter table public.profiles add constraint profiles_role_check check (role in ('user','sub_admin','admin'));
 alter table public.profiles drop constraint if exists profiles_status_check;
 alter table public.profiles add constraint profiles_status_check check (status in ('active','blocked'));
 
