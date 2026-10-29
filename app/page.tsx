@@ -16,6 +16,20 @@ import { SiteBot } from "./_components/landing/SiteBot";
  * reads them from the admin panel. Only the canonical is stated here, because
  * the layout deliberately no longer sets one for the whole site.
  */
+/**
+ * Rebuilt at most once a minute.
+ *
+ * Without this, the landing page is rendered once when the site is built and
+ * then served unchanged until the next deployment — so every edit in the
+ * admin panel appeared to save and then did nothing at all. The panel says
+ * changes are live in seconds, and for the dashboard they are; this page was
+ * the exception, and a silent one.
+ *
+ * A minute is the backstop. Saving in the admin panel refreshes this page
+ * immediately, so the wait only applies if something is changed another way.
+ */
+export const revalidate = 60;
+
 export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 export default async function Landing() {

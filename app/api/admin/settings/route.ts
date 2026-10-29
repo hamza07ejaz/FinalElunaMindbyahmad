@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSettings, saveSetting, DEFAULTS } from "../../../../lib/settings";
 import { logAdmin } from "../../../../lib/auth";
 import { adminOrFail, body } from "../_helpers";
@@ -30,6 +31,17 @@ export async function PUT(req: Request) {
     console.error("saveSetting failed:", err);
     return NextResponse.json({ error: "Could not save these settings." }, { status: 500 });
   }
+
+  /*
+   * Rebuild the public pages now rather than waiting for them to expire.
+   *
+   * The landing and pricing pages are prerendered, so a saved change used to
+   * sit in the database while the site carried on serving the HTML it was
+   * built with. The admin saw "Saved.", visited the page, and found nothing
+   * different — with no error anywhere to explain it.
+   */
+  revalidatePath("/");
+  revalidatePath("/pricing");
 
   await logAdmin(gate.admin, `settings.${key}`, key);
   // getSettings re-reads and re-validates, so the client always gets the stored truth.

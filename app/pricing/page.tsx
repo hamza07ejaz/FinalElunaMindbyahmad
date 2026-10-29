@@ -5,6 +5,20 @@ import { Faq } from "../_components/landing/Faq";
 import { Footer } from "../_components/landing/Footer";
 import { getSettings } from "../../lib/settings";
 
+/**
+ * Rebuilt at most once a minute.
+ *
+ * Without this, the pricing page is rendered once when the site is built and
+ * then served unchanged until the next deployment — so every edit in the
+ * admin panel appeared to save and then did nothing at all. The panel says
+ * changes are live in seconds, and for the dashboard they are; this page was
+ * the exception, and a silent one.
+ *
+ * A minute is the backstop. Saving in the admin panel refreshes this page
+ * immediately, so the wait only applies if something is changed another way.
+ */
+export const revalidate = 60;
+
 export const metadata: Metadata = {
   title: "Pricing — Eluna Mind",
   description: "Free to study with every day. Premium unlocks every tool and much higher daily limits.",
