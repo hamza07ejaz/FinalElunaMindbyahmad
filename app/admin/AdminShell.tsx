@@ -46,6 +46,17 @@ export function AdminShell({ email, role, permissions, children }:
 
   const isActive = (href: string) => (href === "/admin" ? pathname === "/admin" : pathname.startsWith(href));
 
+  /*
+   * What the header says you are looking at.
+   *
+   * Taken from the nav rather than written twice, so a page added to the nav
+   * is named here without anybody remembering to do it. The longest match
+   * wins, so /admin/blog/new still reads as Blog instead of Overview.
+   */
+  const current = [...allowed]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((n) => isActive(n.href));
+
   const nav = (
     <nav className="space-y-1">
       {allowed.map((n) => (
@@ -67,26 +78,62 @@ export function AdminShell({ email, role, permissions, children }:
   return (
     <div className="min-h-dvh">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-white/10 bg-[#0a0f1f]/80 p-4 backdrop-blur-xl lg:flex">
-        <div className="mb-6 flex items-start justify-between px-1">
-          <div><Logo href="/admin" size={30} /><p className="mt-1 text-xs text-lamp">{ROLE_LABEL[role]} panel</p></div>
-          <Bell />
+        {/*
+          The bell used to live here, in the corner of the sidebar. Its panel
+          opens downward and to the left of the button, which in a 16rem column
+          meant most of it opened underneath the page. It belongs in the header
+          with the other things you act on.
+        */}
+        <div className="mb-6 px-1">
+          <Logo href="/admin" size={30} />
+          <p className="mt-1 text-xs text-lamp">{ROLE_LABEL[role]} panel</p>
         </div>
         {nav}
-        <div className="mt-auto space-y-1 pt-4">
-          <p className="truncate px-3 text-xs text-muted">{email}</p>
-          <Link href="/dashboard" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted hover:bg-white/5 hover:text-paper">
-            <Icon name="arrow" size={18} /> Back to the app
-          </Link>
+        {/* "Back to the app" lives in the header now, where it is in sight on
+            every screen size rather than only at the foot of the sidebar. */}
+        <div className="mt-auto pt-4">
+          <p className="truncate px-3 text-xs text-muted" title={email}>{email}</p>
         </div>
       </aside>
 
-      <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-white/10 bg-[#0b1020]/85 px-4 backdrop-blur-xl lg:hidden">
-        <button type="button" onClick={() => setOpen((v) => !v)} aria-label="Menu" className="rounded-lg p-2 text-paper/80 hover:bg-white/10">
+      {/*
+        One header for both sizes.
+        
+        There was no header at all above `lg`: the desktop panel was a sidebar
+        and then straight into the page, so there was nowhere for the things
+        that belong to the whole panel — which is how the bell ended up wedged
+        into the sidebar corner. The menu button and the logo are the only
+        parts that are phone-only.
+      */}
+      <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-white/10 bg-[#0b1020]/85 px-4 backdrop-blur-xl lg:pl-[17.5rem]">
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-label="Menu"
+          className="rounded-lg p-2 text-paper/80 hover:bg-white/10 lg:hidden">
           <Icon name={open ? "x" : "menu"} size={22} />
         </button>
-        <Logo href="/admin" size={26} />
-        <Bell className="ml-auto" />
-        <span className="chip chip-brand">{ROLE_LABEL[role]}</span>
+        <span className="lg:hidden"><Logo href="/admin" size={26} /></span>
+
+        <div className="hidden min-w-0 items-center gap-2.5 lg:flex">
+          {current && <Icon name={current.icon} size={18} className="shrink-0 text-lamp" />}
+          <h2 className="truncate font-display text-base text-paper">{current?.label ?? "Admin"}</h2>
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          {canSupport && waiting > 0 && (
+            <Link href="/admin/support"
+              className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-white/5 hover:text-paper sm:flex"
+              title={`${waiting} message${waiting === 1 ? "" : "s"} waiting for a reply`}>
+              <Icon name="inbox" size={15} />
+              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-lamp px-1.5 text-[0.68rem] font-semibold text-[#07040f]">{waiting}</span>
+            </Link>
+          )}
+          <Bell />
+          <span className="chip chip-brand hidden sm:inline-flex">{ROLE_LABEL[role]}</span>
+          <Link href="/dashboard"
+            className="hidden items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-white/5 hover:text-paper lg:flex"
+            title={email}>
+            <Icon name="arrow" size={16} /> Back to the app
+          </Link>
+        </div>
       </header>
       {open && <div className="page-enter border-b border-white/10 p-3 lg:hidden">{nav}</div>}
 

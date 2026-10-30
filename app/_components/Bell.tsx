@@ -124,19 +124,45 @@ export function Bell({ className = "" }: { className?: string }) {
         )}
       </button>
 
+      {/*
+        On a phone the panel is pinned to the viewport, not to the button.
+        Anchored to the button it ran off whichever edge the button happened to
+        be near — in the admin sidebar it opened behind the page, and on a
+        narrow screen most of it sat off to the left where nobody could reach
+        it. Pinning it means it fits whatever the screen is, wherever the bell
+        sits. From `sm` up there is room to hang it off the button as before.
+      */}
       {open && (
-        <div role="dialog" aria-label="Notifications"
-          className="pop-in absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-white/10 bg-[#0a0d1c]/97 shadow-2xl backdrop-blur-xl">
+        <>
+          <button
+            type="button" aria-hidden tabIndex={-1} onClick={() => setOpen(false)}
+            className="fixed inset-0 z-40 cursor-default bg-black/40 sm:hidden"
+          />
+          <div role="dialog" aria-label="Notifications"
+            /*
+              Solid, not translucent. At 97% over a blur it still let the page
+              beneath show through enough to read, so a notification sat on top
+              of a heading and neither could be read properly.
+            */
+            className="pop-in fixed inset-x-3 top-16 z-50 overflow-hidden rounded-2xl border border-white/10 bg-[#0a0d1c] shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[22rem]">
           <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-2.5">
             <p className="text-sm font-medium text-paper">Notifications</p>
-            {unread > 0 && (
-              <button type="button" onClick={() => markRead()} className="text-xs text-lamp hover:underline">
-                Mark all read
+            <div className="flex items-center gap-3">
+              {unread > 0 && (
+                <button type="button" onClick={() => markRead()} className="text-xs text-lamp hover:underline">
+                  Mark all read
+                </button>
+              )}
+              {/* A way out that does not depend on hitting the backdrop. */}
+              <button type="button" onClick={() => setOpen(false)} aria-label="Close notifications"
+                className="-mr-1 rounded-lg p-1 text-muted hover:bg-white/10 hover:text-paper sm:hidden">
+                <Icon name="x" size={15} />
               </button>
-            )}
+            </div>
           </div>
 
-          <div className="max-h-[22rem] overflow-y-auto">
+          {/* Tall enough to be worth opening, short enough to stay on screen. */}
+          <div className="max-h-[min(26rem,60dvh)] overflow-y-auto overscroll-contain">
             {items.length === 0 && (
               <p className="px-4 py-8 text-center text-sm text-muted">Nothing yet.</p>
             )}
@@ -170,7 +196,8 @@ export function Bell({ className = "" }: { className?: string }) {
               );
             })}
           </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

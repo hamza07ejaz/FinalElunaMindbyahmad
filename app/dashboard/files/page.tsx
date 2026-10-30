@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { DropZone, useAttach, type Attached } from "../../_components/Attach";
+import { DropZone, useAttach } from "../../_components/Attach";
 import { Icon, type IconName } from "../../_components/Icon";
 import { ErrorBox, Panel } from "../../_components/ToolUI";
 import { useUsage } from "../../_components/UsageProvider";
@@ -50,10 +50,10 @@ export default function FilesPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function onPick(f: File) {
-    const got: Attached | null = await attach.upload(f);
-    await load();                       // show the new row either way
-    if (got) attach.clear();            // the list is the record now, no chip needed
+  async function onPick(files: File[]) {
+    await attach.uploadMany(files);
+    await load();            // the rows appear whether each file was read or not
+    attach.setFile(null);    // the list is the record now, no chip needed
   }
 
   async function remove(id: string) {
@@ -86,7 +86,31 @@ export default function FilesPage() {
             {!paid && <div className="mt-4 flex justify-center"><UpgradeButton label="Get more uploads" className="btn btn-primary btn-sm" /></div>}
           </div>
         ) : (
-          <DropZone onPick={(f) => { void onPick(f); }} busy={attach.busy} />
+          <DropZone multiple onPickMany={(fs) => { void onPick(fs); }} busy={attach.busy} />
+        )}
+        {/*
+          While a batch is going up, each file gets its own line. One file
+          failing used to replace the message for all of them, which read as
+          though nothing had worked.
+        */}
+        {attach.queue.length > 1 && (
+          <ul className="mt-4 space-y-1.5">
+            {attach.queue.map((q, i) => (
+              <li key={`${q.name}-${i}`} className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+                {q.status === "reading" ? <span className="spinner !h-3.5 !w-3.5 shrink-0" />
+                  : q.status === "done" ? <Icon name="check" size={15} className="shrink-0 text-mint" />
+                  : q.status === "failed" ? <Icon name="x" size={15} className="shrink-0 text-red-300" />
+                  : <span className="h-2 w-2 shrink-0 rounded-full bg-white/25" />}
+                <span className="min-w-0 flex-1 truncate text-paper/85">{q.name}</span>
+                <span className={`shrink-0 text-xs ${q.status === "failed" ? "text-red-300" : "text-muted"}`}>
+                  {q.status === "waiting" ? "waiting"
+                    : q.status === "reading" ? "reading…"
+                    : q.status === "done" ? "ready"
+                    : q.error}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
         <div className="mt-4"><ErrorBox error={attach.error} /></div>
       </Panel>

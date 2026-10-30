@@ -9,6 +9,8 @@ import {
 import { BUCKET, SIZE_LIMITS, storagePath } from "../../../lib/uploads";
 import { captureRouteError } from "../../../lib/errors";
 import { notes } from "../../../lib/notify";
+import { budget, Expired, requestBudgetMs } from "../../../lib/deadline";
+import { BusyError, fileGate } from "../../../lib/gate";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,13 +24,30 @@ const MIME_BY_KIND = {
 /** How many pages of a scanned PDF to read. Each one is a vision call. */
 const SCAN_PAGES = 5;
 
+/**
+ * How the request's time is divided.
+ *
+ * The numbers matter less than the fact that there are any: before this, every
+ * stage could take as long as it liked, and the only thing that ever stopped
+ * an upload was the platform killing the function — which the browser receives
+ * as a gateway page, not as JSON, so the front end hung on it.
+ *
+ * Reading the file is capped well under the total so there is always room left
+ * to write a row and an answer. Waiting for a turn is capped shortest of all:
+ * queueing until the request dies is the exact failure the queue is there to
+ * prevent.
+ */
+const WAIT_FOR_TURN_MS = 8_000;
+const PARSE_SHARE = 0.55;   // of whatever is left when parsing starts
+const VISION_SHARE = 0.8;   // of what remains after that, for a scanned PDF
+
 const READ_IMAGE_PROMPT =
   "Read this image for a student. Write out every word, number, formula and label exactly as shown, " +
   "keeping the layout order. If it is a diagram, chart or handwriting, describe what it shows after " +
   "the transcription. Do not solve anything.";
 
 /** One rendered page, read by the vision model. */
-async function readImage(dataUrl: string, page: number, of: number): Promise<string> {
+async function readImage(dataUrl: string, page: number, of: number, deadline: number): Promise<string> {
   const res = await complete({
     model: MODEL, max_tokens: 1500, temperature: 0.2,
     messages: [{
@@ -38,7 +57,7 @@ async function readImage(dataUrl: string, page: number, of: number): Promise<str
         { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
       ],
     }],
-  });
+  }, { deadline });
   const t = res.choices[0]?.message?.content?.trim() ?? "";
   return t ? `--- Page ${page} ---\n${t}` : "";
 }
@@ -67,13 +86,42 @@ function explainExtractFailure(message: string, kind: string): string {
   if (/invalid|corrupt|malformed|bad xref|unexpected end/.test(m))
     return `That ${kind === "pdf" ? "PDF" : "file"} appears to be damaged. Try opening and re-saving it, then upload again.`;
 
-  if (/timeout|timed out|aborted/.test(m))
-    return "Reading that file took too long. A smaller file, or fewer pages, usually works.";
+  if (/timeout|timed out|aborted|took longer than|stopped/.test(m))
+    return "Reading that file took too long, so it was stopped. A smaller file, or one with fewer pages, usually works.";
+
+  if (/busy|try again in a moment/.test(m))
+    return "The server is reading other files right now. Please try again in a moment.";
 
   return "The file uploaded but could not be read. This is a problem on our side, not with your file.";
 }
 
 export async function POST(req: Request) {
+  /*
+   * The clock starts here, before anything slow happens.
+   *
+   * Everything below runs inside this budget, and it is deliberately shorter
+   * than the platform's own ceiling so there is always time left to write an
+   * answer the browser can parse.
+   */
+  const clock = budget(requestBudgetMs());
+  try {
+    return await handle(req, clock);
+  } catch (err) {
+    // Nothing should reach here, which is exactly why it exists: an unhandled
+    // throw would otherwise be a dead request, and a dead request is a spinner
+    // that never stops.
+    console.error("upload failed outright:", err);
+    captureRouteError(err, req, { route: "/api/upload", status: 500 });
+    return NextResponse.json(
+      { error: err instanceof BusyError ? err.message : "The upload could not be completed. Please try again." },
+      { status: err instanceof BusyError ? 503 : 500 },
+    );
+  } finally {
+    clock.done();
+  }
+}
+
+async function handle(req: Request, clock: ReturnType<typeof budget>) {
   const g = await guard(req, "upload");
   if (!g.ok) return g.res;
 
@@ -138,10 +186,22 @@ export async function POST(req: Request) {
   // Read the file. A failure here is the file's problem, not the upload's, so the
   // row stays and the user is told what went wrong.
   try {
-    let text = "", pages: number | null = null, scanned = false;
+    let text = "", pages: number | null = null, scanned = false, partial = false;
+
+    /*
+     * Reading the file waits its turn.
+     *
+     * Only a couple of files are read at a time on one instance, because
+     * reading one is processor work: four at once do not go four times faster,
+     * they go four times slower each and can all miss the deadline together.
+     * Waiting here is bounded, and running out of patience is a clear answer
+     * rather than a request left to die.
+     */
+    const parse = <T>(work: () => Promise<T>) => fileGate.run(work, Math.min(WAIT_FOR_TURN_MS, clock.left()));
 
     if (kind === "pdf") {
-      const r = await extractPdf(bytes);
+      const forParse = Math.round(clock.left() * PARSE_SHARE);
+      const r = await parse(() => extractPdf(bytes, forParse));
       text = r.text; pages = r.pages ?? null;
 
       /*
@@ -154,32 +214,40 @@ export async function POST(req: Request) {
        * unusable coursework — the scanned handout — into something the tools
        * can work with.
        */
-      if (!text.trim()) {
-        const shots = await renderPdfPages(bytes, SCAN_PAGES);
+      if (!text.trim() && !clock.expired()) {
+        // Rendering pages is the same processor work as parsing them, so it
+        // takes a turn too, and only gets a slice of what is still left.
+        const forRender = Math.round(clock.left() * PARSE_SHARE);
+        const shots = await parse(() => renderPdfPages(bytes, SCAN_PAGES, forRender));
         if (shots.length) {
           // allSettled, not all: five vision calls against a slow provider can
           // outlast the function itself, and three pages of a scanned handout
           // is worth far more to a student than an error saying the file could
           // not be read. Whatever came back is kept, in page order.
+          const deadline = Date.now() + Math.round(clock.left() * VISION_SHARE);
           const read = await Promise.allSettled(
-            shots.map((url, i) => readImage(url, i + 1, shots.length)),
+            shots.map((url, i) => readImage(url, i + 1, shots.length, deadline)),
           );
           text = read
             .map((r) => (r.status === "fulfilled" ? r.value : ""))
             .filter(Boolean)
             .join("\n\n");
           const missed = read.filter((r) => r.status === "rejected").length;
-          if (missed) console.warn(`scan: ${missed} of ${shots.length} pages could not be read`);
+          if (missed) {
+            console.warn(`scan: ${missed} of ${shots.length} pages could not be read`);
+            // Worth telling the student: some of their pages are not in there.
+            partial = true;
+          }
           scanned = true;
         }
       }
     }
-    else if (kind === "docx") text = extractDocx(bytes).text;
-    else if (kind === "pptx") { const r = extractPptx(bytes); text = r.text; pages = r.pages ?? null; }
-    else if (kind === "xlsx") { const r = extractXlsx(bytes); text = r.text; pages = r.pages ?? null; }
-    else if (kind === "epub") { const r = extractEpub(bytes); text = r.text; pages = r.pages ?? null; }
-    else if (kind === "rtf") text = extractRtf(bytes).text;
-    else if (kind === "text") text = extractPlainText(bytes).text;
+    else if (kind === "docx") text = (await parse(async () => extractDocx(bytes).text));
+    else if (kind === "pptx") { const r = await parse(async () => extractPptx(bytes)); text = r.text; pages = r.pages ?? null; }
+    else if (kind === "xlsx") { const r = await parse(async () => extractXlsx(bytes)); text = r.text; pages = r.pages ?? null; }
+    else if (kind === "epub") { const r = await parse(async () => extractEpub(bytes)); text = r.text; pages = r.pages ?? null; }
+    else if (kind === "rtf") text = (await parse(async () => extractRtf(bytes).text));
+    else if (kind === "text") text = (await parse(async () => extractPlainText(bytes).text));
     else if (kind === "image") {
       const b64 = Buffer.from(bytes).toString("base64");
       const res = await complete({
@@ -191,7 +259,7 @@ export async function POST(req: Request) {
             { type: "image_url", image_url: { url: `data:${file.type || "image/png"};base64,${b64}`, detail: "high" } },
           ],
         }],
-      });
+      }, { deadline: Date.now() + Math.round(clock.left() * VISION_SHARE) });
       text = res.choices[0]?.message?.content?.trim() ?? "";
     }
     else if (kind === "audio") {
@@ -217,8 +285,35 @@ export async function POST(req: Request) {
       // Worth saying: the student should know the first pages were read by
       // eye, and that a long scan was not read in full.
       ...(scanned ? { scanned: true, scannedPages: Math.min(pages ?? SCAN_PAGES, SCAN_PAGES) } : {}),
+      ...(partial ? { partial: true } : {}),
     });
   } catch (err) {
+    /*
+     * Two failures here are the server's fault, not the file's, so the upload
+     * is given back rather than counted.
+     *
+     * Busy means this instance was already reading as much as it can, and the
+     * student did nothing wrong. Out of time means we stopped the work
+     * ourselves. Charging a daily allowance for either would be charging
+     * somebody for our own load — and these are precisely the cases they will
+     * want to retry straight away.
+     */
+    if (err instanceof BusyError || err instanceof Expired) {
+      await g.refund();
+      await db.from("uploads").update({
+        status: "failed", error: err instanceof BusyError ? "busy" : "out of time",
+      }).eq("id", row.id);
+      return NextResponse.json(
+        {
+          id: row.id, status: "failed", retry: true,
+          error: err instanceof BusyError
+            ? "The server is reading other files right now. Please try that one again in a moment."
+            : "Reading that file took too long, so it was stopped. Try it on its own, or use a smaller file.",
+        },
+        { status: 503 },
+      );
+    }
+
     console.error("extraction failed:", err);
     captureRouteError(err, req, { route: "/api/upload", status: 500 });
     // Store what actually went wrong, not the word "extract". The admin reads

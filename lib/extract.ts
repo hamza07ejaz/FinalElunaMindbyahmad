@@ -14,51 +14,25 @@ const tidy = (s: string) =>
   s.replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, MAX_EXTRACTED_CHARS);
 
 /**
- * Give Node the browser APIs pdfjs expects, before pdfjs looks for them.
+ * Reading PDFs now lives in ./pdf.ts, in a worker.
  *
- * pdfjs was written for a browser and reaches for DOMMatrix, Path2D and
- * ImageData whether or not it is drawing anything. Node has none of them, so
- * they are borrowed from @napi-rs/canvas.
+ * It used to run here, in this process, with no way to stop it. That was the
+ * cause of two separate complaints that looked unrelated: a PDF that took too
+ * long killed the whole request with no error the browser could read, and
+ * several uploads at once froze each other, because parsing is processor work
+ * and this process has one thread for it.
  *
- * pdf-parse does this itself, which is why nothing is wrong on a laptop. It
- * stops working once the deployment bundles the package and the native binary
- * behind it is no longer where a runtime require can find it — and the symptom
- * is "DOMMatrix is not defined", which says nothing about PDFs. Setting the
- * globals here first means pdfjs finds them already in place, and if the canvas
- * module genuinely cannot load, the error says so in words.
+ * These two keep their old names so every caller reads the same, but both now
+ * take the time they are allowed to spend. There is no sensible default for
+ * that — it belongs to the request, which knows how much of its own budget is
+ * left — so it is required.
  */
-let polyfilled = false;
-async function ensurePdfGlobals(): Promise<void> {
-  if (polyfilled) return;
-  const g = globalThis as Record<string, unknown>;
-  if (g.DOMMatrix && g.Path2D && g.ImageData) { polyfilled = true; return; }
+export { pdfText, pdfPageImages, PdfTimeout } from "./pdf";
+import { pdfPageImages, pdfText } from "./pdf";
 
-  try {
-    const canvas = (await import("@napi-rs/canvas")) as unknown as Record<string, unknown>;
-    for (const name of ["DOMMatrix", "Path2D", "ImageData"]) {
-      if (!g[name] && canvas[name]) g[name] = canvas[name];
-    }
-    polyfilled = true;
-  } catch (err) {
-    throw new Error(
-      "PDF reading is unavailable on this server: the canvas module could not be loaded " +
-      `(${(err as Error)?.message ?? "unknown error"}). Upload the pages as images instead.`,
-    );
-  }
-}
-
-export async function extractPdf(bytes: Uint8Array): Promise<Extracted> {
-  await ensurePdfGlobals();
-  const { PDFParse } = await import("pdf-parse");
-  // The parser hands its buffer to a worker, which detaches it. Give it a copy so
-  // the caller's bytes stay usable afterwards.
-  const parser = new PDFParse({ data: new Uint8Array(bytes) });
-  try {
-    const r = await parser.getText();
-    return { text: tidy(r.text ?? ""), pages: r.total ?? undefined };
-  } finally {
-    await parser.destroy().catch(() => {});
-  }
+export async function extractPdf(bytes: Uint8Array, timeoutMs: number): Promise<Extracted> {
+  const r = await pdfText(bytes, timeoutMs);
+  return { text: tidy(r.text), pages: r.pages ?? undefined };
 }
 
 /**
@@ -73,24 +47,8 @@ export async function extractPdf(bytes: Uint8Array): Promise<Extracted> {
  * Capped at a few pages on purpose. Each one becomes a vision call, and a
  * 300-page scan would be both a long wait and a large bill.
  */
-export async function renderPdfPages(bytes: Uint8Array, maxPages = 5): Promise<string[]> {
-  await ensurePdfGlobals();
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: new Uint8Array(bytes) });
-  try {
-    const shot = await parser.getScreenshot({
-      first: 1,
-      last: maxPages,
-      // Wide enough for a vision model to read body text, small enough that
-      // five of them do not become a multi-megabyte request.
-      desiredWidth: 1400,
-      imageDataUrl: true,
-      imageBuffer: false,
-    });
-    return (shot.pages ?? []).map((p) => p.dataUrl).filter(Boolean);
-  } finally {
-    await parser.destroy().catch(() => {});
-  }
+export function renderPdfPages(bytes: Uint8Array, maxPages: number, timeoutMs: number): Promise<string[]> {
+  return pdfPageImages(bytes, maxPages, timeoutMs);
 }
 
 /**

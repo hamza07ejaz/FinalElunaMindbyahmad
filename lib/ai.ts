@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { supabaseAdmin } from "./supabase/admin";
+import { requestBudgetMs } from "./deadline";
 
 /**
  * The AI layer.
@@ -177,22 +178,66 @@ export class NoProviderError extends Error {
 type CompletionParams = Record<string, unknown>;
 
 /**
+ * Limits the caller imposes on a call.
+ *
+ * `deadline` is a moment in time, not a duration, because it is shared: the
+ * route has a budget for the whole request, and every AI call inside it has to
+ * respect what is left of that one budget rather than starting its own.
+ */
+export type CompleteOptions = { deadline?: number; signal?: AbortSignal };
+
+/**
  * A chat completion, through the first provider that answers.
  *
  * The caller's `model` is ignored: the model belongs to whichever key ends up
  * being used, so a failover to a different provider still asks for a model that
  * provider actually has.
  */
-export async function complete(params: CompletionParams): Promise<any> {
+export async function complete(params: CompletionParams, opts: CompleteOptions = {}): Promise<any> {
   const providers = await loadProviders();
   if (!providers.length) throw new NoProviderError();
 
   let lastError: unknown = null;
+  const startedAt = Date.now();
+
+  /*
+   * Even with no deadline from the caller, this loop gets one.
+   *
+   * Failover tries each key in turn and each attempt has its own timeout, so
+   * three slow providers could spend over two minutes inside a request the
+   * platform ends at sixty seconds — the caller never saw an error, just a
+   * request that died. Every tool route is protected by this one default,
+   * rather than by each of them remembering to pass a deadline.
+   */
+  const deadline = opts.deadline ?? startedAt + requestBudgetMs();
 
   for (const p of providers) {
+    /*
+     * Stop trying once the caller has no time left.
+     *
+     * Failover is per provider, and each attempt has its own timeout. With
+     * three keys configured and all three slow, this loop could spend well
+     * over two minutes inside a request the platform kills at sixty seconds —
+     * so the caller never got an error at all, just a request that died.
+     * Whoever is waiting is better served by one honest failure than by a
+     * third attempt they will never see the result of.
+     */
+    const left = deadline - Date.now();
+    if (left <= 0 || opts.signal?.aborted) {
+      lastError ??= new Error(`No AI provider answered within ${Math.round((Date.now() - startedAt) / 1000)}s.`);
+      break;
+    }
+
     try {
       const client = clientFor(p);
-      const res = await (client.chat.completions.create as any)({ ...params, model: p.model });
+      const res = await (client.chat.completions.create as any)(
+        { ...params, model: p.model },
+        {
+          ...(opts.signal ? { signal: opts.signal } : {}),
+          // Never wait longer than there is, whatever the client default.
+          timeout: Math.max(1_000, Math.min(REQUEST_MS, left)),
+        },
+      );
 
       // An answer with nothing in it is a failure, not a success. It happens on
       // a model that spent its whole output budget thinking, and on a provider

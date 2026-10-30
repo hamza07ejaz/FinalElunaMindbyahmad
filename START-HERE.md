@@ -404,6 +404,29 @@ for everybody.
 
 ---
 
+## 8c. If files feel slow — Admin → nothing, these are environment variables
+
+Reading a file is processor work, so the server only reads a couple at a time
+and asks the rest to wait a few seconds. Somebody uploading four files at once
+sees them go up two at a time; somebody arriving when the server is already
+busy is told to try again in a moment, straight away, instead of waiting until
+the request dies.
+
+Three settings change that, in Vercel → Settings → Environment Variables. You
+almost certainly do not need them — they are here so that if the client ever
+moves to a bigger server, the app can use it:
+
+| Variable | Default | What it does |
+|---|---|---|
+| `FILE_CONCURRENCY` | `2` | How many files one server reads at the same time. Raise it only on a plan with more than one processor core. |
+| `FILE_QUEUE` | `8` | How many more may wait their turn before people are told it is busy. |
+| `REQUEST_BUDGET_MS` | `50000` | How long a single upload may take in total. **Keep this below your plan's function timeout** (60s on Vercel's free and Pro plans by default) or the platform will cut the request off before the app can explain itself. |
+
+A file that runs out of time, or arrives while the server is full, does not
+count against the person's daily uploads — they can simply try it again.
+
+---
+
 ## 9. Check it actually works
 
 Click through this once on the live site:
