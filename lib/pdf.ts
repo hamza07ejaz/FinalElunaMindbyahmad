@@ -139,26 +139,44 @@ async function viaWorker<T>(data: Job, timeoutMs: number): Promise<T | null> {
 
 let polyfilled = false;
 
-async function ensureGlobals(): Promise<void> {
-  if (polyfilled) return;
+/**
+ * The same arrangement as the worker, for the in-process fallback: the real
+ * canvas module when it is installed, plain arithmetic when it is not, so a
+ * missing native binary costs page rendering rather than PDFs altogether.
+ */
+async function ensureGlobals(): Promise<"native" | "shim"> {
   const g = globalThis as Record<string, unknown>;
-  if (g.DOMMatrix && g.Path2D && g.ImageData) { polyfilled = true; return; }
+  if (polyfilled) return g.__pdfDrawing as "native" | "shim";
+
+  let how: "native" | "shim" = "shim";
   try {
     const canvas = (await import("@napi-rs/canvas")) as unknown as Record<string, unknown>;
     for (const name of ["DOMMatrix", "Path2D", "ImageData"]) {
       if (!g[name] && canvas[name]) g[name] = canvas[name];
     }
-    polyfilled = true;
+    if (g.DOMMatrix && g.Path2D && g.ImageData) how = "native";
   } catch (err) {
-    throw new Error(
-      "PDF reading is unavailable on this server: the canvas module could not be loaded " +
-      `(${(err as Error)?.message ?? "unknown error"}).`,
-    );
+    console.error("@napi-rs/canvas unavailable; PDF text will still be read:", (err as Error)?.message);
   }
+
+  if (how === "shim") {
+    const { installPdfShim } = await import("./pdf-shim.mjs");
+    installPdfShim(g as unknown as typeof globalThis);
+  }
+
+  g.__pdfDrawing = how;
+  polyfilled = true;
+  return how;
 }
 
-async function parser(bytes: Uint8Array) {
-  await ensureGlobals();
+async function parser(bytes: Uint8Array, needsDrawing = false) {
+  const how = await ensureGlobals();
+  if (needsDrawing && how === "shim") {
+    throw new Error(
+      "This server cannot turn PDF pages into images: the @napi-rs/canvas module is not installed. " +
+      "Reading PDFs that contain text still works.",
+    );
+  }
   const { PDFParse } = await import("pdf-parse");
   return new PDFParse({ data: new Uint8Array(bytes) });
 }
@@ -191,7 +209,7 @@ export async function pdfPageImages(
   const out = await viaWorker<{ pages: string[] }>({ job: "render", bytes, maxPages, width }, timeoutMs);
   if (out) return out.pages ?? [];
 
-  const p = await parser(bytes);
+  const p = await parser(bytes, true);
   try {
     const shot = await p.getScreenshot({
       first: 1, last: maxPages, desiredWidth: width, imageDataUrl: true, imageBuffer: false,

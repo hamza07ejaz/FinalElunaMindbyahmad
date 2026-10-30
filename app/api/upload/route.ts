@@ -80,8 +80,15 @@ function explainExtractFailure(message: string, kind: string): string {
   if (/password|encrypted/.test(m))
     return "That file is password protected. Remove the password and upload it again.";
 
-  if (/dommatrix|canvas|cannot find module|is not defined|not available on this server/.test(m))
-    return "This server cannot read that type of file at the moment. Nothing is wrong with your file — please report it.";
+  /*
+   * A missing library on our side, said as such.
+   *
+   * Reading a PDF's text no longer depends on the graphics module, so this is
+   * now about scanned pages and other formats rather than PDFs in general —
+   * but whatever reaches it, the point stands: it is not the file's fault.
+   */
+  if (/dommatrix|canvas|cannot find module|is not defined|not available on this server|cannot turn pdf pages/.test(m))
+    return "This server is missing something it needs to read that file. Nothing is wrong with your file — please report it.";
 
   if (/invalid|corrupt|malformed|bad xref|unexpected end/.test(m))
     return `That ${kind === "pdf" ? "PDF" : "file"} appears to be damaged. Try opening and re-saving it, then upload again.`;
@@ -187,6 +194,8 @@ async function handle(req: Request, clock: ReturnType<typeof budget>) {
   // row stays and the user is told what went wrong.
   try {
     let text = "", pages: number | null = null, scanned = false, partial = false;
+    /** Why reading a scanned PDF's pages as pictures did not happen, if it did not. */
+    let renderFailed = "";
 
     /*
      * Reading the file waits its turn.
@@ -218,7 +227,25 @@ async function handle(req: Request, clock: ReturnType<typeof budget>) {
         // Rendering pages is the same processor work as parsing them, so it
         // takes a turn too, and only gets a slice of what is still left.
         const forRender = Math.round(clock.left() * PARSE_SHARE);
-        const shots = await parse(() => renderPdfPages(bytes, SCAN_PAGES, forRender));
+
+        /*
+         * A render that cannot happen is not a failed upload.
+         *
+         * Turning a page into a picture needs a native graphics module that a
+         * server may not have; reading text does not. Letting that throw here
+         * meant a PDF whose text simply could not be read was reported as a
+         * file the server could not read at all — two different problems with
+         * one confusing message. The reason is kept and explained below.
+         */
+        let shots: string[] = [];
+        try {
+          shots = await parse(() => renderPdfPages(bytes, SCAN_PAGES, forRender));
+        } catch (err) {
+          if (err instanceof BusyError || err instanceof Expired) throw err;
+          renderFailed = (err as Error)?.message ?? "";
+          console.error("could not render the PDF's pages:", renderFailed);
+        }
+
         if (shots.length) {
           // allSettled, not all: five vision calls against a slow provider can
           // outlast the function itself, and three pages of a scanned handout
@@ -268,13 +295,25 @@ async function handle(req: Request, clock: ReturnType<typeof budget>) {
     }
 
     if (!text.trim()) {
-      await db.from("uploads").update({ status: "failed", error: "no text" }).eq("id", row.id);
-      return NextResponse.json({
-        id: row.id, status: "failed",
-        error: kind === "pdf"
-          ? "No text could be read from that PDF, and reading the pages as images did not work either."
-          : "No readable text was found in that file.",
-      }, { status: 422 });
+      await db.from("uploads").update({
+        status: "failed", error: renderFailed ? `no text; ${renderFailed}`.slice(0, 300) : "no text",
+      }).eq("id", row.id);
+
+      /*
+       * Three different things end up here, and they are not the same news.
+       *
+       * A PDF with no text layer is a picture of a page; normally its pages
+       * are read by eye instead. When that cannot be attempted at all — the
+       * server is missing the graphics module — saying "could not be read" is
+       * both unhelpful and wrong about whose problem it is.
+       */
+      const why = kind !== "pdf"
+        ? "No readable text was found in that file."
+        : renderFailed
+          ? "That PDF is a scan — there is no text inside it to read — and this server cannot read scanned pages at the moment. Uploading the pages as images works, and this is worth reporting to us."
+          : "No text could be read from that PDF, and reading the pages as images did not work either.";
+
+      return NextResponse.json({ id: row.id, status: "failed", error: why }, { status: 422 });
     }
 
     await db.from("uploads").update({ status: "ready", extracted_text: text, pages }).eq("id", row.id);

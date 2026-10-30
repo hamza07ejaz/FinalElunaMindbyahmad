@@ -148,6 +148,32 @@ const nextConfig: NextConfig = {
    */
   serverExternalPackages: ["pdf-parse", "pdfjs-dist", "@napi-rs/canvas"],
 
+  /*
+   * And make sure the binary is actually in the deployment.
+   *
+   * Keeping a package unbundled is not the same as shipping it. The platform
+   * works out which files a function needs by following imports, and a
+   * platform-specific `.node` file is reached by a runtime lookup that no
+   * tracer can follow — so the package arrives without the one file that does
+   * the work, and PDFs fail on the deployed site while working on a laptop.
+   *
+   * Every Linux build of the module is named here rather than just the
+   * common one: which it is depends on the host's architecture and C library,
+   * and guessing wrong costs a feature. They are only a few megabytes, and
+   * only the matching one is ever loaded.
+   *
+   * Reading a PDF's text no longer depends on this — lib/pdf-shim.mjs covers
+   * that — but turning a scanned page into an image genuinely does.
+   */
+  outputFileTracingIncludes: {
+    "/api/upload": [
+      "./node_modules/@napi-rs/canvas-linux-x64-gnu/**",
+      "./node_modules/@napi-rs/canvas-linux-x64-musl/**",
+      "./node_modules/@napi-rs/canvas-linux-arm64-gnu/**",
+      "./node_modules/@napi-rs/canvas-linux-arm64-musl/**",
+    ],
+  },
+
   // The app's own 404 and error pages are the ones people should see.
   poweredByHeader: false,
 

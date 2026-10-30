@@ -425,6 +425,14 @@ moves to a bigger server, the app can use it:
 A file that runs out of time, or arrives while the server is full, does not
 count against the person's daily uploads — they can simply try it again.
 
+**If a PDF ever says "this server is missing something it needs":** reading a
+PDF's text works everywhere, with no extra library. Only *scanned* PDFs — the
+ones that are pictures of pages, with no text inside — need a graphics module
+called `@napi-rs/canvas`, and a deployed server can end up without its binary.
+`next.config.ts` now carries that binary into the deployment, so a fresh
+deploy normally fixes it. If it persists, the student can still upload the
+pages as images and everything else keeps working.
+
 ---
 
 ## 9. Check it actually works
