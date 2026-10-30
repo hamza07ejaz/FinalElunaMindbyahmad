@@ -13,7 +13,16 @@ export type Attached = {
 };
 
 export const ACCEPT = ".pdf,.docx,.pptx,.xlsx,.xlsm,.epub,.rtf,.txt,.md,.csv,.tsv,.json,.srt,.vtt,.png,.jpg,.jpeg,.webp,.gif,.bmp,.heic,.mp3,.m4a,.wav,.webm,.ogg,.mp4,.mpga,.aac,.flac";
-export const ACCEPT_AUDIO = ".mp3,.m4a,.wav,.webm,.ogg,.mp4,.mpga";
+/**
+ * What the transcriber will actually accept.
+ *
+ * Video is on this list deliberately: a lecture is far more often a recorded
+ * screen share than an audio file, and the sound inside an .mp4 or .webm
+ * transcribes exactly as well. Formats the API rejects — .mov, .mkv, .avi —
+ * are left off, because accepting a file only to fail it after the upload is
+ * worse than not offering it.
+ */
+export const ACCEPT_AUDIO = ".mp3,.m4a,.wav,.webm,.ogg,.oga,.flac,.mp4,.mpeg,.mpga,.aac";
 
 const ICON_BY_KIND: Record<Attached["kind"], IconName> = { document: "file", image: "image", audio: "mic" };
 
@@ -72,7 +81,18 @@ export function useAttach() {
     if (!f) return null;
     if (f.size === 0) { setError("That file is empty."); return null; }
     if (f.size > 25 * 1024 * 1024) {
-      setError(`That file is ${(f.size / 1048576).toFixed(1)} MB. The largest we accept is 25 MB.`);
+      /*
+       * A video is the common way to be over the limit, and "make it smaller"
+       * is not advice anybody can act on. Extracting the sound is: it is what
+       * gets transcribed anyway, and it is a fraction of the size.
+       */
+      const isVideo = f.type.startsWith("video/") || /\.(mp4|mov|mkv|avi|m4v|webm)$/i.test(f.name);
+      setError(
+        `That file is ${(f.size / 1048576).toFixed(1)} MB and the limit is 25 MB.` +
+        (isVideo
+          ? " For a video, export just the audio as an MP3 or M4A — that is all that gets transcribed, and it is usually a tenth of the size."
+          : " Try a shorter recording, or a smaller file."),
+      );
       return null;
     }
 
@@ -270,8 +290,11 @@ export function DropZone({
   const [over, setOver] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
 
-  const hand = (list: FileList | null | undefined) => {
-    const files = Array.from(list ?? []).slice(0, multiple ? MAX_AT_ONCE : 1);
+  /**
+   * @param list already copied out of the input — see the note on the input below.
+   */
+  const hand = (list: File[]) => {
+    const files = list.slice(0, multiple ? MAX_AT_ONCE : 1);
     if (!files.length) return;
     if (onPickMany) onPickMany(files);
     else onPick?.(files[0]);
@@ -283,15 +306,27 @@ export function DropZone({
       onDragLeave={() => setOver(false)}
       onDrop={(e) => {
         e.preventDefault(); setOver(false);
-        hand(e.dataTransfer.files);
+        hand(Array.from(e.dataTransfer.files ?? []));
       }}
       onClick={() => !busy && ref.current?.click()}
       className={`cursor-pointer rounded-2xl border border-dashed p-6 text-center transition ${
         over ? "border-violet-400/70 bg-violet-500/10" : "border-white/15 hover:border-white/30 hover:bg-white/[0.03]"
       }`}
     >
+      {/*
+        Copy the files out before clearing the input.
+
+        `input.files` is live: resetting `value` — which is what lets the same
+        file be chosen twice in a row — empties the very list being held. Done
+        in the wrong order, every file chosen by clicking vanished before it
+        was read, and only drag-and-drop still worked.
+      */}
       <input ref={ref} type="file" accept={accept} multiple={multiple} className="hidden"
-        onChange={(e) => { const list = e.target.files; e.target.value = ""; hand(list); }} />
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          hand(files);
+        }} />
       <div className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-xl bg-white/10 text-lamp">
         {busy ? <span className="spinner" /> : <Icon name="attach" size={20} />}
       </div>

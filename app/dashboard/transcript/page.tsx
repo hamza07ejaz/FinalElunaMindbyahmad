@@ -53,7 +53,7 @@ export default function TranscriptPage() {
           ) : (
             <DropZone
               onPick={(f) => { void attach.upload(f); }} busy={attach.busy} accept={ACCEPT_AUDIO}
-              hint="MP3, M4A, WAV, WEBM or OGG · up to 12 MB (roughly 15 minutes)"
+              hint="Audio or video — MP3, M4A, WAV, OGG, FLAC, MP4 or WEBM · up to 25 MB"
             />
           )}
 

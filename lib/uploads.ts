@@ -8,6 +8,32 @@ export const SIZE_LIMITS = {
   audio: 25 * 1024 * 1024,     // 25 MB, the transcription API's own ceiling
 } as const;
 
+/**
+ * Containers the transcriber cannot open.
+ *
+ * A video is a fine thing to upload — the sound inside it is what gets
+ * transcribed — but only some containers can be read. QuickTime, Matroska and
+ * AVI cannot, and finding that out *after* the upload costs the student one of
+ * their daily uploads and tells them nothing they can act on. Caught here, the
+ * answer is a sentence they can follow.
+ *
+ * @returns advice if this file will not work, or "" if it is fine.
+ */
+export function unplayableContainer(fileName: string, mime: string): string {
+  const ext = (fileName.toLowerCase().split(".").pop() ?? "").trim();
+  const bad: Record<string, string> = {
+    mov: "QuickTime (.mov)",
+    mkv: "Matroska (.mkv)",
+    avi: "AVI (.avi)",
+    wmv: "Windows Media (.wmv)",
+    flv: "Flash video (.flv)",
+    m4v: "M4V (.m4v)",
+  };
+  const named = bad[ext] ?? (/quicktime|matroska|x-msvideo|x-ms-wmv/.test(mime) ? "that video format" : "");
+  if (!named) return "";
+  return `${named} files cannot be transcribed. Export the recording as an MP4, or save just the audio as an MP3 or M4A — that is all that gets transcribed anyway.`;
+}
+
 export type UploadRow = {
   id: string;
   file_name: string;

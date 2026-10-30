@@ -6,7 +6,7 @@ import {
   classify, extractDocx, extractEpub, extractPdf, extractPlainText, extractPptx,
   extractRtf, extractXlsx, renderPdfPages, sniffLooksRight,
 } from "../../../lib/extract";
-import { BUCKET, SIZE_LIMITS, storagePath } from "../../../lib/uploads";
+import { BUCKET, SIZE_LIMITS, storagePath, unplayableContainer } from "../../../lib/uploads";
 import { captureRouteError } from "../../../lib/errors";
 import { notes } from "../../../lib/notify";
 import { budget, Expired, requestBudgetMs } from "../../../lib/deadline";
@@ -145,6 +145,17 @@ async function handle(req: Request, clock: ReturnType<typeof budget>) {
       { error: "That file type is not supported. Use a PDF, Word, PowerPoint, Excel, EPUB, RTF or text file, an image, or an audio recording." },
       { status: 415 }
     );
+
+  /*
+   * A video whose container cannot be opened, refused before it costs anything.
+   *
+   * It would otherwise upload happily, count against the daily allowance, and
+   * fail later inside the transcriber with a message from somebody else's API.
+   */
+  if (kind === "audio") {
+    const advice = unplayableContainer(file.name || "", file.type || "");
+    if (advice) return NextResponse.json({ error: advice }, { status: 415 });
+  }
 
   const group = MIME_BY_KIND[kind];
   const limit = SIZE_LIMITS[group];
