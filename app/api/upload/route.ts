@@ -87,7 +87,7 @@ function explainExtractFailure(message: string, kind: string): string {
    * now about scanned pages and other formats rather than PDFs in general —
    * but whatever reaches it, the point stands: it is not the file's fault.
    */
-  if (/dommatrix|canvas|cannot find module|is not defined|not available on this server|cannot turn pdf pages/.test(m))
+  if (/dommatrix|canvas|cannot find module|is not defined|not available on this server|cannot turn pdf pages|fake worker|pdf\.worker/.test(m))
     return "This server is missing something it needs to read that file. Nothing is wrong with your file — please report it.";
 
   if (/invalid|corrupt|malformed|bad xref|unexpected end/.test(m))

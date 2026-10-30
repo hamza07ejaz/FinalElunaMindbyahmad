@@ -171,6 +171,20 @@ const nextConfig: NextConfig = {
       "./node_modules/@napi-rs/canvas-linux-x64-musl/**",
       "./node_modules/@napi-rs/canvas-linux-arm64-gnu/**",
       "./node_modules/@napi-rs/canvas-linux-arm64-musl/**",
+
+      /*
+       * pdfjs's own worker, which it loads by a path it builds at runtime.
+       *
+       * In Node, pdfjs runs its worker in-process — but it still fetches the
+       * worker's *code* with `import("./pdf.worker.mjs")`, a relative string
+       * resolved when a PDF is opened. Nothing imports that file statically,
+       * so the tracer never sees it and the deployment ships pdf.mjs without
+       * it. The symptom is a deployed-only error that names a path inside
+       * /var/task and mentions a "fake worker" — neither of which means
+       * anything to the person who just uploaded their lecture notes.
+       */
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs",
     ],
   },
 

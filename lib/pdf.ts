@@ -137,40 +137,24 @@ async function viaWorker<T>(data: Job, timeoutMs: number): Promise<T | null> {
 
 /* ---------------- the in-process fallback ---------------- */
 
-let polyfilled = false;
+let prepared: "native" | "shim" | null = null;
 
 /**
- * The same arrangement as the worker, for the in-process fallback: the real
- * canvas module when it is installed, plain arithmetic when it is not, so a
- * missing native binary costs page rendering rather than PDFs altogether.
+ * The same preparation as the worker, for the in-process fallback: the real
+ * canvas module if it is installed, pdfjs pointed at its own worker file
+ * either way.
  */
-async function ensureGlobals(): Promise<"native" | "shim"> {
-  const g = globalThis as Record<string, unknown>;
-  if (polyfilled) return g.__pdfDrawing as "native" | "shim";
-
-  let how: "native" | "shim" = "shim";
-  try {
-    const canvas = (await import("@napi-rs/canvas")) as unknown as Record<string, unknown>;
-    for (const name of ["DOMMatrix", "Path2D", "ImageData"]) {
-      if (!g[name] && canvas[name]) g[name] = canvas[name];
-    }
-    if (g.DOMMatrix && g.Path2D && g.ImageData) how = "native";
-  } catch (err) {
-    console.error("@napi-rs/canvas unavailable; PDF text will still be read:", (err as Error)?.message);
-  }
-
-  if (how === "shim") {
-    const { installPdfShim } = await import("./pdf-shim.mjs");
-    installPdfShim(g as unknown as typeof globalThis);
-  }
-
-  g.__pdfDrawing = how;
-  polyfilled = true;
+async function prepare(): Promise<"native" | "shim"> {
+  if (prepared) return prepared;
+  const setup = await import("./pdf-setup.mjs");
+  const how = (await setup.ensureDrawing(globalThis)) as "native" | "shim";
+  await setup.ensurePdfWorker();
+  prepared = how;
   return how;
 }
 
 async function parser(bytes: Uint8Array, needsDrawing = false) {
-  const how = await ensureGlobals();
+  const how = await prepare();
   if (needsDrawing && how === "shim") {
     throw new Error(
       "This server cannot turn PDF pages into images: the @napi-rs/canvas module is not installed. " +

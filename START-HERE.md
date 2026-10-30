@@ -425,13 +425,23 @@ moves to a bigger server, the app can use it:
 A file that runs out of time, or arrives while the server is full, does not
 count against the person's daily uploads — they can simply try it again.
 
-**If a PDF ever says "this server is missing something it needs":** reading a
-PDF's text works everywhere, with no extra library. Only *scanned* PDFs — the
-ones that are pictures of pages, with no text inside — need a graphics module
-called `@napi-rs/canvas`, and a deployed server can end up without its binary.
-`next.config.ts` now carries that binary into the deployment, so a fresh
-deploy normally fixes it. If it persists, the student can still upload the
-pages as images and everything else keeps working.
+**If a PDF ever says "this server is missing something it needs":** that is a
+packaging problem on the server, never the student's file.
+
+PDFs rely on two files that a deployment can easily leave behind, because
+nothing imports them in a way a build tool can follow — they are looked up by
+name while a PDF is being opened:
+
+- `pdfjs-dist/.../pdf.worker.mjs` — needed by **every** PDF
+- `@napi-rs/canvas`'s binary — needed only by **scanned** PDFs (pictures of
+  pages, with no text inside)
+
+`next.config.ts` now lists both under `outputFileTracingIncludes`, so they are
+carried into the deployment. **If you ever move the upload route to a
+different path, move that entry with it** — it is keyed on `/api/upload`.
+
+A redeploy fixes it. If the graphics binary is still missing afterwards, only
+scanned PDFs are affected; ordinary PDFs carry on, and the message says so.
 
 ---
 
