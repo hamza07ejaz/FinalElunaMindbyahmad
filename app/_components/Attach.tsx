@@ -48,17 +48,68 @@ const UPLOAD_TIMEOUT_MS = 75_000;
 /** Several files at once, but not so many that the server starts refusing them. */
 export const MAX_AT_ONCE = 4;
 
-/** One upload, with its own timeout, so no single request can hang for ever. */
-async function send(f: File): Promise<Response> {
+/** A fetch that cannot wait for ever. */
+async function withTimeout(url: string, init: RequestInit, ms = UPLOAD_TIMEOUT_MS): Promise<Response> {
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(new Error("timeout")), UPLOAD_TIMEOUT_MS);
+  const timer = setTimeout(() => ac.abort(new Error("timeout")), ms);
   try {
-    const fd = new FormData();
-    fd.append("file", f);
-    return await fetch("/api/upload", { method: "POST", body: fd, signal: ac.signal });
+    return await fetch(url, { ...init, signal: ac.signal });
   } finally {
     clearTimeout(timer);
   }
+}
+
+const json = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+/**
+ * Send one file.
+ *
+ * The file goes **straight to storage**, not through the app. The platform
+ * refuses any request body over a few megabytes, and it refuses it before the
+ * app is involved — so the browser got the platform's own error page, which is
+ * not JSON, and the only thing the app could say was "that file could not be
+ * uploaded". Every lecture recording and most real PDFs are over that line.
+ *
+ * Three steps: ask permission, put the file in storage, ask the app to read
+ * it. If the first step fails for any reason, the old single request still
+ * works for anything small enough to fit in it — so a server that cannot sign
+ * an upload URL loses large files, not all files.
+ */
+async function send(f: File): Promise<Response> {
+  const ticket = await withTimeout("/api/upload/ticket", json({ name: f.name, type: f.type, size: f.size }), 20_000)
+    .catch(() => null);
+
+  // 4xx means the file itself was refused — the wrong type, too big, out of
+  // allowance. That answer is final and is shown as it is; retrying the same
+  // file a different way would only reach the same conclusion more slowly.
+  if (ticket && !ticket.ok && ticket.status >= 400 && ticket.status < 500) return ticket;
+
+  if (ticket?.ok) {
+    const t = await ticket.json().catch(() => null);
+    if (t?.id && t?.token) {
+      const { supabase } = await import("../../lib/supabase/browser");
+      const { error } = await supabase.storage
+        .from("uploads")
+        .uploadToSignedUrl(t.path, t.token, f, { contentType: f.type || undefined });
+
+      if (!error) {
+        // The bytes are safe now; this only asks for them to be read, so it
+        // may take as long as the server's own budget allows.
+        return withTimeout("/api/upload/process", json({ id: t.id }));
+      }
+      console.error("direct upload failed, falling back:", error.message);
+    }
+  }
+
+  // The old way: the whole file in one request. Works below the platform's
+  // body limit, which is what it is here for.
+  const fd = new FormData();
+  fd.append("file", f);
+  return withTimeout("/api/upload", { method: "POST", body: fd });
 }
 
 /**

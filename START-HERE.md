@@ -425,6 +425,15 @@ moves to a bigger server, the app can use it:
 A file that runs out of time, or arrives while the server is full, does not
 count against the person's daily uploads — they can simply try it again.
 
+**Files go straight to storage, not through the app.** Vercel refuses any
+request body over **4.5 MB** before it reaches your code, so a lecture
+recording or a large PDF could never have been posted through the app — the
+browser got Vercel's own error page instead of an answer. Uploads now work in
+three steps: the app grants permission, the browser sends the file to Supabase
+Storage itself, and the app reads it back from there. Nothing to configure;
+the only requirement is that the Supabase URL is correct in Vercel, which it
+already must be for logging in to work.
+
 **If a PDF ever says "this server is missing something it needs":** that is a
 packaging problem on the server, never the student's file.
 

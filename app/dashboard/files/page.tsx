@@ -13,7 +13,7 @@ type Row = {
   mime_type: string;
   size_bytes: number;
   kind: "document" | "image" | "audio";
-  status: "processing" | "ready" | "failed";
+  status: "uploading" | "processing" | "ready" | "failed";
   pages: number | null;
   error: string | null;
   created_at: string;
@@ -138,7 +138,7 @@ export default function FilesPage() {
                 <p className="mt-0.5 text-xs text-muted">
                   {size(r.size_bytes)} · {when(r.created_at)}
                   {r.pages ? ` · ${r.pages} page${r.pages === 1 ? "" : "s"}` : ""}
-                  {r.status === "processing" ? " · reading…" : ""}
+                  {r.status === "uploading" ? " · sending…" : r.status === "processing" ? " · reading…" : ""}
                   {r.status === "failed" ? ` · could not be read${r.error ? ` (${r.error})` : ""}` : ""}
                 </p>
               </div>
