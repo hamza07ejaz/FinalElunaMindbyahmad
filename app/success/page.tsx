@@ -18,7 +18,7 @@ async function reportPurchase() {
     if (!r.ok) return;
     const { conversion } = await r.json();
     if (conversion?.transaction_id) {
-      analytics.purchase(conversion.transaction_id, conversion.value, conversion.currency);
+      analytics.purchase(conversion.transaction_id, conversion.value, conversion.currency, conversion.plan ?? "");
     }
   } catch {
     // A conversion that cannot be reported is a reporting problem, not the
@@ -28,6 +28,9 @@ async function reportPurchase() {
 
 export default function SuccessPage() {
   const [state, setState] = useState<"checking" | "done" | "slow">("checking");
+  // Filled in from the same poll that confirms the payment, so the page names
+  // the plan they actually bought rather than a tier written in here.
+  const [planName, setPlanName] = useState("");
   // Read from the admin settings rather than written into the sentence, which
   // is how this page ended up telling people to write to an address nobody
   // had used for months.
@@ -47,11 +50,13 @@ export default function SuccessPage() {
       try {
         const r = await fetch("/api/usage", { cache: "no-store" });
         if (r.status === 401) { window.location.href = "/login?next=/success"; return; }
-        if (r.ok && (await r.json()).plan === "premium") {
+        const j = r.ok ? await r.json() : null;
+        if (j?.paid) {
+          setPlanName(String(j.planName || ""));
           setState("done");
-          // The plan is premium, so the webhook has landed and the payment is
-          // real. Ask the server whether this particular purchase still needs
-          // reporting; it answers once and never again.
+          // They are on a paid plan, so the webhook has landed and the payment
+          // is real. Ask the server whether this particular purchase still
+          // needs reporting; it answers once and never again.
           void reportPurchase();
           return;
         }
@@ -70,7 +75,7 @@ export default function SuccessPage() {
       <div className="glass-strong pop-in relative w-full max-w-md rounded-3xl p-9 text-center">
         <div className="mb-6 flex justify-center"><Logo /></div>
         {state === "checking" && (<><div className="mx-auto mb-5 grid h-16 w-16 place-items-center"><span className="spinner !h-8 !w-8" /></div><h1 className="text-xl font-semibold text-paper">Confirming your payment…</h1><p className="mt-2 text-sm text-muted">This usually takes a few seconds.</p></>)}
-        {state === "done" && (<><div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full bg-emerald-500/20 text-emerald-300"><Icon name="check" size={32} stroke={2.4} /></div><h1 className="text-2xl font-semibold text-paper">Welcome to Premium!</h1><p className="mt-2 text-sm text-muted">All study tools and higher limits are now unlocked.</p><Link href="/dashboard" className="btn btn-primary mt-7 w-full">Go to dashboard</Link></>)}
+        {state === "done" && (<><div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full bg-emerald-500/20 text-emerald-300"><Icon name="check" size={32} stroke={2.4} /></div><h1 className="text-2xl font-semibold text-paper">{planName ? `Welcome to ${planName}!` : "You're all set!"}</h1><p className="mt-2 text-sm text-muted">Your new tools and higher limits are unlocked.</p><Link href="/dashboard" className="btn btn-primary mt-7 w-full">Go to dashboard</Link></>)}
         {state === "slow" && (<><h1 className="text-xl font-semibold text-paper">Payment received, still activating</h1><p className="mt-2 text-sm text-muted">Your plan can take a minute to update. Open the dashboard and refresh in a moment. If it does not change, email {supportEmail}.</p><Link href="/dashboard" className="btn btn-primary mt-7 w-full">Go to dashboard</Link></>)}
       </div>
     </div>

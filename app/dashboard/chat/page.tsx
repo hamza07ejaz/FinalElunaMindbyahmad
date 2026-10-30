@@ -22,7 +22,7 @@ const SUGGESTIONS = [
 const uid = () => Math.random().toString(36).slice(2);
 
 export default function ChatPage() {
-  const { usage, refresh, plan } = useUsage();
+  const { usage, refresh, paid } = useUsage();
   const attach = useAttach();
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -301,10 +301,10 @@ export default function ChatPage() {
             <div className="mt-2 flex items-center justify-between px-1 text-xs text-muted">
               <span>
                 {left === 0 ? "Daily message limit reached." : `${left} of ${usage.chat.limit} messages left today`}
-                {plan !== "premium" && left <= 3 && left > 0 ? " · running low" : ""}
+                {!paid && left <= 3 && left > 0 ? " · running low" : ""}
                 {attach.left === 0 ? " · no uploads left today" : ` · ${attach.left} uploads left`}
               </span>
-              {plan !== "premium" && left <= 5 ? <UpgradeButton label="Get more" className="btn btn-ghost btn-sm" /> : <span className="hidden sm:inline">Enter to send · Shift+Enter for a new line</span>}
+              {!paid && left <= 5 ? <UpgradeButton label="Get more" className="btn btn-ghost btn-sm" /> : <span className="hidden sm:inline">Enter to send · Shift+Enter for a new line</span>}
             </div>
           </form>
         </div>

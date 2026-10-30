@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { supabaseAdmin } from "./supabase/admin";
+import { loadPlans, purchasablePlans } from "./tiers";
 
 /**
  * Stripe configuration.
@@ -115,11 +116,18 @@ export function maskKey(key: string): string {
  * which is the worst failure this app has, so it is treated as not ready rather
  * than as a warning to be clicked past.
  */
-export function readiness(c: StripeConfig) {
+export function readiness(c: StripeConfig, planPrices = 0) {
   const problems: string[] = [];
   if (!c.secretKey) problems.push("No Stripe secret key.");
   else if (keyMode(c.secretKey) === "unknown") problems.push("That does not look like a Stripe secret key — it should start with sk_test_ or sk_live_.");
-  if (!c.priceId) problems.push("No price chosen, so there is nothing to sell.");
+  /*
+   * Something has to be for sale, but it no longer has to be *this* price.
+   *
+   * Each plan carries its own Stripe price now, so an owner who set up three
+   * plans properly and left this field empty is ready to take money. Requiring
+   * the old single price as well would have switched their checkout off.
+   */
+  if (!c.priceId && planPrices === 0) problems.push("No price chosen, so there is nothing to sell.");
   if (c.secretKey && !c.webhookSecret)
     problems.push("No webhook signing secret. Without it a customer can pay and never be upgraded.");
 
@@ -130,10 +138,15 @@ export function readiness(c: StripeConfig) {
   };
 }
 
+/** readiness() with the plans loaded for it, which is what every caller wants. */
+export async function paymentsReadiness(force = false) {
+  const c = await stripeConfig(force);
+  return readiness(c, purchasablePlans(await loadPlans()).length);
+}
+
 /** Whether real checkout should run, or the demo flow should stand in for it. */
 export async function checkoutMode(): Promise<"live" | "demo" | "off"> {
-  const c = await stripeConfig();
-  if (readiness(c).ready) return "live";
+  if ((await paymentsReadiness()).ready) return "live";
   // Demo checkout is an explicit opt-in: it grants Premium without payment, so
   // it must never be what an unconfigured production site falls into by accident.
   if (process.env.DEMO_CHECKOUT === "1") return "demo";

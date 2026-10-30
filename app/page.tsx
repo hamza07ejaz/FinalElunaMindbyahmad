@@ -112,7 +112,7 @@ export default async function Landing() {
           stops={[
             show.features && { id: "features", text: "These are the tools. Each one works on whatever you upload \u2014 your own notes, not a textbook someone else wrote." },
             show.how && { id: "how", text: "Three steps, and the first one is just dragging in a file. Nothing to install." },
-            show.pricing && { id: "pricing", text: "The free plan refills every day. Premium is for exam weeks, when the daily limits stop being enough." },
+            show.pricing && { id: "pricing", text: "The free plan refills every day. The paid plans are for exam weeks, when the daily limits stop being enough." },
             show.faq && { id: "faq", text: "The questions people actually ask before signing up. Mine is here too if yours is not." },
           ].filter(Boolean) as { id: string; text: string }[]}
         />

@@ -12,7 +12,7 @@ const PROMPTS = ["Explain photosynthesis in simple words", "Quiz me on the Frenc
 type Recent = { id: string; title: string };
 
 export default function DashboardHome() {
-  const { plan, email, usage } = useUsage();
+  const { planName, paid, email, usage } = useUsage();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [notes, setNotes] = useState<Recent[]>([]);
@@ -35,7 +35,7 @@ export default function DashboardHome() {
         <div className="lamp-glow -right-10 -top-16 h-64 w-64 bg-violet-600/50" />
         <div className="lamp-glow -bottom-20 left-1/3 h-56 w-56 bg-indigo-500/18" style={{ animationDelay: "-5s" }} />
         <div className="relative max-w-2xl">
-          <span className="chip chip-brand mb-4"><Icon name="spark" size={12} /> {plan === "premium" ? "Premium" : "Free plan"} · {chatLeft} chat messages left today</span>
+          <span className="chip chip-brand mb-4"><Icon name="spark" size={12} /> {planName} · {chatLeft} chat messages left today</span>
           <h1 className="text-3xl tracking-tight text-paper sm:text-4xl">{greet}, <span className="capitalize text-lamp">{name}</span></h1>
           <p className="mt-2 text-muted">What would you like to learn today? Ask the tutor, or jump into a tool below.</p>
           <form className="mt-5 flex gap-2" onSubmit={(e) => { e.preventDefault(); ask(q); }}>
@@ -53,7 +53,7 @@ export default function DashboardHome() {
       <section className="mt-9">
         <div className="mb-4 flex items-end justify-between">
           <h2 className="text-lg font-semibold text-paper">Your study tools</h2>
-          {plan !== "premium" && <UpgradeButton label="Unlock all tools" className="btn btn-ghost btn-sm" />}
+          {!paid && <UpgradeButton label="Unlock all tools" className="btn btn-ghost btn-sm" />}
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {TOOLS.map((t, i) => {

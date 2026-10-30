@@ -11,9 +11,13 @@ type Profile = {
   trial_started_at: string | null; trial_ends_at: string | null;
 };
 type Viewer = { role: string; canPlan: boolean; canRole: boolean; isSelf: boolean };
+type PlanOption = { slug: string; name: string; isDefault: boolean };
+
 type Detail = {
   profile: Profile;
   viewer: Viewer;
+  /** Every plan the owner has created, so this page never hardcodes a tier. */
+  plans?: PlanOption[];
   usage_today: Record<string, number>;
   usage_total: Record<string, number>;
   last_14_days: { day: string; uses: number }[];
@@ -72,7 +76,13 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const totalUses = Object.values(d.usage_total).reduce((a, b) => a + b, 0);
   const fmt = (s: string | null) => (s ? new Date(s).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Never");
   const v = d.viewer;
-  const onTrial = p.plan !== "premium" && !!p.trial_ends_at && new Date(p.trial_ends_at).getTime() > Date.now();
+  // "On a trial" means on the free plan with a live trial date. Which plan is
+  // the free one comes from the plans list, not from the word "premium".
+  const plans = d.plans ?? [];
+  const freeSlug = plans.find((x) => x.isDefault)?.slug ?? "free";
+  const planName = plans.find((x) => x.slug === p.plan)?.name ?? p.plan ?? "Free plan";
+  const paid = !!p.plan && p.plan !== freeSlug;
+  const onTrial = !paid && !!p.trial_ends_at && new Date(p.trial_ends_at).getTime() > Date.now();
   const daysLeft = p.trial_ends_at ? Math.max(0, Math.ceil((new Date(p.trial_ends_at).getTime() - Date.now()) / 86_400_000)) : 0;
 
   const confirmText = {
@@ -93,8 +103,8 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
     >
       {toastNode}
       <div className="mb-5 flex flex-wrap gap-2">
-        <Pill tone={p.plan === "premium" ? "premium" : onTrial ? "trial" : "free"}>
-          {p.plan === "premium" ? "Premium" : onTrial ? `On trial · ${daysLeft}d left` : "Free plan"}
+        <Pill tone={paid ? "premium" : onTrial ? "trial" : "free"}>
+          {paid ? planName : onTrial ? `On trial · ${daysLeft}d left` : planName}
         </Pill>
         {p.role === "admin" && <Pill tone="admin">Admin</Pill>}
         {p.role === "sub_admin" && <Pill tone="staff">Sub-admin</Pill>}
@@ -182,12 +192,13 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
           {v.canPlan ? (
             <Card>
               <h2 className="mb-4 font-display text-base text-paper">Plan</h2>
-              <div className="flex gap-2">
-                {(["free", "premium"] as const).map((pl) => (
-                  <button key={pl} type="button" disabled={busy || p.plan === pl}
-                    onClick={() => patch({ plan: pl }, `Moved to the ${pl} plan.`)}
-                    className={`btn btn-sm flex-1 ${p.plan === pl ? "btn-primary" : "btn-ghost"}`}>
-                    {pl === "free" ? "Free" : "Premium"}
+              {/* One button per plan the owner has created, not two fixed tiers. */}
+              <div className="flex flex-wrap gap-2">
+                {plans.map((pl) => (
+                  <button key={pl.slug} type="button" disabled={busy || p.plan === pl.slug}
+                    onClick={() => patch({ plan: pl.slug }, `Moved to ${pl.name}.`)}
+                    className={`btn btn-sm ${p.plan === pl.slug ? "btn-primary" : "btn-ghost"}`}>
+                    {pl.name}
                   </button>
                 ))}
               </div>
@@ -213,7 +224,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                       <input type="number" min={1} max={90} className="input !w-20 !py-1.5 !text-sm" value={trialDays}
                         onChange={(e) => setTrialDays(Math.min(90, Math.max(1, Number(e.target.value) || 1)))} />
                     </Field>
-                    <button type="button" className="btn btn-ghost btn-sm flex-1" disabled={busy || p.plan === "premium"}
+                    <button type="button" className="btn btn-ghost btn-sm flex-1" disabled={busy || paid}
                       onClick={() => patch({ trialDays }, `${trialDays}-day trial granted.`)}>
                       <Icon name="zap" size={14} /> {p.trial_started_at ? "Grant another" : "Grant trial"}
                     </button>
@@ -225,7 +236,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
             <Card>
               <h2 className="mb-2 font-display text-base text-paper">Plan</h2>
               <p className="text-sm text-paper/85">
-                {p.plan === "premium" ? "Premium" : onTrial ? `On a free trial, ${daysLeft} day${daysLeft === 1 ? "" : "s"} left` : "Free plan"}
+                {paid ? planName : onTrial ? `On a free trial, ${daysLeft} day${daysLeft === 1 ? "" : "s"} left` : planName}
               </p>
               <p className="mt-2 text-xs text-muted">Your role cannot change plans or trials. Ask a full admin.</p>
             </Card>

@@ -38,7 +38,8 @@ export async function GET(req: Request) {
     // it just cannot show renewal dates.
     console.error("billing load failed:", error.message);
     return NextResponse.json({
-      plan: auth.plan, paidPlan: auth.paidPlan, onTrial: auth.onTrial,
+      plan: auth.plan, paidPlan: auth.paidPlan, planName: auth.planName,
+      subscribed: auth.subscribed, onTrial: auth.onTrial,
       trialEndsAt: auth.trialEndsAt, canManage: false, setupNeeded: true,
       supportEmail: branding.supportEmail,
     });
@@ -48,11 +49,15 @@ export async function GET(req: Request) {
   const trialEnd = row.card_trial_ends_at ?? row.trial_ends_at ?? null;
   const onTrial =
     row.subscription_status === "trialing" ||
-    (auth.paidPlan !== "premium" && !!trialEnd && new Date(trialEnd).getTime() > Date.now());
+    (!auth.subscribed && !!trialEnd && new Date(trialEnd).getTime() > Date.now());
 
   return NextResponse.json({
     plan: auth.plan,
     paidPlan: auth.paidPlan,
+    // The name of the plan they are on, so the page never has to guess at
+    // "Premium" when the owner has called their tiers something else.
+    planName: auth.planName,
+    subscribed: auth.subscribed,
     onTrial,
     trialEndsAt: trialEnd,
     status: row.subscription_status,

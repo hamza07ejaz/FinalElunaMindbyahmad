@@ -81,12 +81,17 @@ export const notes = {
       href: "/dashboard/files",
     }),
 
-  planChanged: (userId: string, plan: string) =>
+  /**
+   * @param planName the plan's name as the owner typed it, not a slug — this
+   *   text is read by the customer, and there is no fixed set of tiers now.
+   * @param paid false only when they have dropped back to the free plan.
+   */
+  planChanged: (userId: string, planName: string, paid = true) =>
     notifyUser(userId, {
       kind: "billing",
-      title: plan === "premium" ? "You are on Premium" : "Your plan changed",
-      body: plan === "premium"
-        ? "Every tool is unlocked and your daily limits are much higher."
+      title: paid ? `You are on ${planName}` : "Your plan changed",
+      body: paid
+        ? `${planName} is active, with its tools unlocked and its daily limits applied.`
         : "Your account is back on the free plan. Your work is untouched.",
       href: "/dashboard",
     }),

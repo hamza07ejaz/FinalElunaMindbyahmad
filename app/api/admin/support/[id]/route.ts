@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../../../../../lib/supabase/admin";
 import { MAX_BODY, cleanText, getMessages, isStatus } from "../../../../../lib/support";
 import { notes } from "../../../../../lib/notify";
 import { adminOrFail, body } from "../../_helpers";
+import { isPaidPlan, loadPlans, planFor } from "../../../../../lib/tiers";
 
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
@@ -34,7 +35,23 @@ export async function GET(req: Request, { params }: Ctx) {
 
   if (ticket.unread_for_staff) await db.from("support_tickets").update({ unread_for_staff: false }).eq("id", id);
 
-  return NextResponse.json({ ticket: { ...ticket, unread_for_staff: false }, messages, profile: profile ?? null });
+  /*
+   * The plan's name and whether it is a paid one, worked out here.
+   *
+   * The page used to compare the slug with "premium", which read every other
+   * tier as free — exactly the person you most want to recognise before
+   * replying to their ticket.
+   */
+  const plans = await loadPlans();
+  const row = profile ? planFor(plans, profile.plan) : null;
+
+  return NextResponse.json({
+    ticket: { ...ticket, unread_for_staff: false },
+    messages,
+    profile: profile
+      ? { ...profile, planName: row?.name ?? profile.plan, paid: !!row && isPaidPlan(plans, row) }
+      : null,
+  });
 }
 
 /** Reply, change the status, or both. */

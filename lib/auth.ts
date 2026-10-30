@@ -1,6 +1,7 @@
 import { createSupabaseServer } from "./supabase/server";
 import { supabaseAdmin } from "./supabase/admin";
 import type { Plan } from "./plans";
+import { isPaidPlan, loadPlans, planFor, trialPlan } from "./tiers";
 import { can, isStaff, toRole, type Permission, type Role } from "./roles";
 
 // Roles live in their own import-free module so client components can use
@@ -9,10 +10,16 @@ export { ROLE_LABEL, can, isStaff, permissionsFor, type Permission, type Role } 
 
 export type AuthResult = {
   user: { id: string; email?: string };
-  /** What the app should treat them as right now. A live trial reads as premium. */
+  /** The slug of the plan to treat them as on right now. A live trial reads as the trial plan. */
   plan: Plan;
   /** What they actually pay for, ignoring any trial. */
   paidPlan: Plan;
+  /** That plan's name, for anything shown to the person. Never hardcode "Premium". */
+  planName: string;
+  /** True on any plan other than the free default — what `plan === "premium"` used to mean. */
+  paid: boolean;
+  /** True only if they actually pay. `paid` is also true during a trial; this is not. */
+  subscribed: boolean;
   onTrial: boolean;
   trialEndsAt: string | null;
   /** True once a trial has ever been started, so it is never offered twice. */
@@ -71,15 +78,34 @@ export async function requireUser(req?: Request): Promise<AuthResult | null> {
 
   const profile = await loadProfile(user.id);
 
-  const paidPlan: Plan = profile?.plan === "premium" ? "premium" : "free";
+  /*
+   * The plan is whatever row the slug points at.
+   *
+   * It used to be coerced to one of two words here, which meant a third tier
+   * saved against an account was silently read back as "free". An unknown slug
+   * — a plan an owner deleted, say — still falls back to the free default, but
+   * that now happens in one place, planFor(), rather than in this expression.
+   */
+  const plans = await loadPlans();
+  const paidRow = planFor(plans, profile?.plan);
   const trialEndsAt = profile?.trial_ends_at ?? null;
-  // A trial is live purely by date, so nothing has to run to expire one.
-  const onTrial = paidPlan !== "premium" && !!trialEndsAt && new Date(trialEndsAt).getTime() > Date.now();
+
+  // A trial is live purely by date, so nothing has to run to expire one. Only
+  // somebody on the free plan can be on one: a paying customer is not upgraded
+  // or downgraded by a trial that happens to still be in date.
+  const trialRow = trialPlan(plans);
+  const onTrial =
+    !isPaidPlan(plans, paidRow) && !!trialRow && !!trialEndsAt && new Date(trialEndsAt).getTime() > Date.now();
+
+  const effective = onTrial && trialRow ? trialRow : paidRow;
 
   return {
     user,
-    plan: paidPlan === "premium" || onTrial ? "premium" : "free",
-    paidPlan,
+    plan: effective.slug,
+    paidPlan: paidRow.slug,
+    planName: effective.name,
+    paid: isPaidPlan(plans, effective),
+    subscribed: isPaidPlan(plans, paidRow),
     onTrial,
     trialEndsAt,
     trialUsed: !!profile?.trial_started_at,

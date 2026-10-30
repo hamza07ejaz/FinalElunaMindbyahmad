@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../../lib/supabase/admin";
 import { can, logAdmin } from "../../../../../lib/auth";
 import { adminOrFail, body, str } from "../../_helpers";
+import { loadPlans } from "../../../../../lib/tiers";
 
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
@@ -19,6 +20,9 @@ export async function GET(req: Request, { params }: Ctx) {
   // is only to avoid showing a sub-admin a button that would refuse them.
   return NextResponse.json({
     ...data,
+    // The plans that exist, so the page can offer them as buttons instead of
+    // the two it used to have hardcoded.
+    plans: (await loadPlans()).map((p) => ({ slug: p.slug, name: p.name, isDefault: p.isDefault })),
     viewer: {
       role: gate.admin.role,
       canPlan: can(gate.admin, "users.plan"),
@@ -35,7 +39,7 @@ export async function GET(req: Request, { params }: Ctx) {
  *   status   -> "active" | "blocked"           users.moderate
  *   note     -> free text                      users.moderate
  *   resetUsage -> true                         users.moderate
- *   plan     -> "free" | "premium"             users.plan
+ *   plan     -> any plan slug that exists      users.plan
  *   trialDays -> number (grant or extend)      users.plan
  *   endTrial -> true                           users.plan
  *   role     -> "user" | "sub_admin" | "admin" users.role
@@ -57,10 +61,21 @@ export async function PATCH(req: Request, { params }: Ctx) {
     NextResponse.json({ error: `Your role cannot change ${what}. Ask a full admin.` }, { status: 403 });
 
   // ---- money: plan and trials ----
-  if (b.plan === "free" || b.plan === "premium") {
+  /*
+   * Any plan the owner has created, not one of two words.
+   *
+   * Checked against the table rather than a list in here: an admin must be
+   * able to move somebody onto a tier made this morning, and must not be able
+   * to invent a slug that no plan matches — that account would silently read
+   * back as free everywhere.
+   */
+  if (typeof b.plan === "string" && b.plan.trim()) {
     if (!can(actor, "users.plan")) return denied("plans");
-    patch.plan = b.plan;
-    done.push(`plan=${b.plan}`);
+    const slug = b.plan.trim();
+    const exists = (await loadPlans()).some((p) => p.slug === slug);
+    if (!exists) return NextResponse.json({ error: "That plan does not exist." }, { status: 400 });
+    patch.plan = slug;
+    done.push(`plan=${slug}`);
   }
 
   if (typeof b.trialDays === "number" && Number.isFinite(b.trialDays)) {

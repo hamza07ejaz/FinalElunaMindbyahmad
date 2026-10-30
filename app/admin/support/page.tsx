@@ -13,7 +13,7 @@ type Ticket = {
   unread_for_staff: boolean;
 };
 
-type Profile = { plan: string; status: string; role: string; created_at: string; trial_ends_at: string | null } | null;
+type Profile = { plan: string; planName?: string; paid?: boolean; status: string; role: string; created_at: string; trial_ends_at: string | null } | null;
 
 const when = (iso: string) => {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -131,8 +131,12 @@ export default function AdminSupportPage() {
             <div className="flex flex-wrap items-center gap-2">
               {profile && (
                 <>
-                  <Pill tone={profile.plan === "premium" ? "premium" : profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date() ? "trial" : "free"}>
-                    {profile.plan === "premium" ? "Premium" : profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date() ? "On trial" : "Free"}
+                  <Pill tone={profile.paid ? "premium" : profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date() ? "trial" : "free"}>
+                    {profile.paid
+                      ? profile.planName || profile.plan
+                      : profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date()
+                        ? "On trial"
+                        : profile.planName || "Free"}
                   </Pill>
                   {profile.status === "blocked" && <Pill tone="blocked">Blocked</Pill>}
                 </>

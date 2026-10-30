@@ -21,7 +21,7 @@ function Card({ title, children, icon }: { title: string; children: React.ReactN
 }
 
 export default function AccountPage() {
-  const { plan, email, usage, onTrial, trialEndsAt, trialEligible } = useUsage();
+  const { planName, paid, email, usage, onTrial, trialEndsAt, trialEligible } = useUsage();
   const [joined, setJoined] = useState<string | null>(null);
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
@@ -51,7 +51,7 @@ export default function AccountPage() {
   }
 
   const rows = TOOLS.filter((t) => !usage[t.key].locked);
-  const premium = plan === "premium";
+
 
   return (
     <div className="page-enter mx-auto w-full max-w-4xl px-4 py-7 sm:px-6">
@@ -77,12 +77,12 @@ export default function AccountPage() {
               <div className="min-w-0">
                 <p className="truncate font-display text-lg text-paper">{email || "Your account"}</p>
                 <p className="mt-0.5 text-sm text-muted">
-                  {onTrial ? "Premium trial" : premium ? "Premium plan" : "Free plan"}
+                  {onTrial ? `${planName} trial` : planName}
                   {joined && ` · joined ${new Date(joined).toLocaleDateString(undefined, { month: "long", year: "numeric" })}`}
                 </p>
               </div>
             </div>
-            {onTrial ? <TrialBadge /> : premium ? <span className="chip chip-brand">Premium</span> : <UpgradeButton label="Upgrade" className="btn btn-primary btn-sm" />}
+            {onTrial ? <TrialBadge /> : paid ? <span className="chip chip-brand">{planName}</span> : <UpgradeButton className="btn btn-primary btn-sm" />}
           </div>
         </section>
 
@@ -112,16 +112,16 @@ export default function AccountPage() {
                 Your trial has {trialDaysLeft(trialEndsAt)} day{trialDaysLeft(trialEndsAt) === 1 ? "" : "s"} left. When it ends you drop back to the
                 free plan automatically — no card was taken and nothing will be charged.
               </p>
-              <UpgradeButton label="Keep Premium" className="btn btn-primary btn-sm" />
+              <UpgradeButton label={`Keep ${planName}`} className="btn btn-primary btn-sm" />
             </div>
-          ) : !premium && (
+          ) : !paid && (
             <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-violet-400/25 bg-violet-500/5 p-4">
               <p className="min-w-0 flex-1 text-sm text-paper/85">
                 {trialEligible
-                  ? "Premium raises every limit and unlocks every locked tool. Try it free first — no card needed."
-                  : "Premium raises every limit and unlocks every locked tool."}
+                  ? "A paid plan raises every limit and unlocks the locked tools. Try it free first — no card needed."
+                  : "A paid plan raises every limit and unlocks the locked tools."}
               </p>
-              <UpgradeButton label="See Premium" className="btn btn-primary btn-sm" />
+              <UpgradeButton className="btn btn-primary btn-sm" />
             </div>
           )}
         </Card>

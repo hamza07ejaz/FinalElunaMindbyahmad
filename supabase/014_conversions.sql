@@ -57,7 +57,13 @@ end $$;
  * wrote, and both would report the sale. Doing it in one statement means
  * the database decides, and the second caller gets nothing.
  */
-create or replace function public.claim_conversion(p_user uuid)
+-- Dropped first rather than replaced: a later migration adds the plan to what
+-- this returns, and Postgres will not let "create or replace" change a
+-- function's return type. Without the drop, re-running the whole schema fails
+-- here — on the second run only, which is the run nobody tests by hand.
+drop function if exists public.claim_conversion(uuid);
+
+create function public.claim_conversion(p_user uuid)
 returns table (id text, amount_total bigint, currency text)
 language sql
 security definer

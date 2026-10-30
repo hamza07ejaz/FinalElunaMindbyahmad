@@ -4,6 +4,7 @@ import { requireUser, touchLastSeen } from "../../lib/auth";
 import { getUsageToday } from "../../lib/usage";
 import { buildUsageSummary } from "../../lib/plans";
 import { getSettings } from "../../lib/settings";
+import { loadPlans, planFor, purchasablePlans } from "../../lib/tiers";
 import { ErrorBoundary } from "../_components/ErrorCatcher";
 import { UsageProvider } from "../_components/UsageProvider";
 import { Shell } from "./Shell";
@@ -16,17 +17,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const auth = await requireUser();
   if (!auth) redirect("/login?next=/dashboard");
   if (auth.blocked) redirect("/suspended");
-  const [counts, settings] = await Promise.all([getUsageToday(auth.user.id), getSettings()]);
+  const [counts, settings, plans] = await Promise.all([getUsageToday(auth.user.id), getSettings(), loadPlans()]);
   void touchLastSeen(auth.user.id); // fire-and-forget "last seen" stamp
   return (
     <UsageProvider initial={{
       plan: auth.plan,
+      planName: auth.planName,
+      paid: auth.paid,
+      buyable: purchasablePlans(plans).map((p) => ({ slug: p.slug, name: p.name })),
       email: auth.user.email ?? "",
-      usage: buildUsageSummary(auth.plan, counts, settings.rules),
+      usage: buildUsageSummary(counts, planFor(plans, auth.plan).limits),
       role: auth.role,
       onTrial: auth.onTrial,
       trialEndsAt: auth.trialEndsAt,
-      trialEligible: settings.flags.trialEnabled && !auth.trialUsed && auth.paidPlan !== "premium",
+      trialEligible: settings.flags.trialEnabled && !auth.trialUsed && !auth.subscribed,
       trialRequiresCard: settings.flags.trialRequiresCard,
       trialDays: settings.flags.trialDays,
       supportEnabled: settings.flags.supportEnabled,

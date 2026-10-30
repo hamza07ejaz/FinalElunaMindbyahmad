@@ -32,7 +32,7 @@ const STATUS_STYLE: Record<Status, string> = {
 };
 
 export default function SupportPage() {
-  const { email, plan, onTrial } = useUsage();
+  const { email, paid, onTrial } = useUsage();
   const [tickets, setTickets] = useState<Ticket[] | null>(null);
   const [supportEmail, setSupportEmail] = useState("");
   const [enabled, setEnabled] = useState(true);
@@ -281,7 +281,7 @@ export default function SupportPage() {
             <ul className="space-y-1.5 text-sm text-muted">
               <li>· Hit a daily limit? It resets at midnight UTC — the number left is shown on every tool.</li>
               <li>· A file would not read? Scanned PDFs have no text in them; upload a photo of the page instead.</li>
-              <li>· {onTrial ? "Your trial ends on its own and nothing is charged." : plan === "premium" ? "For cancellations, say so here and we will handle it." : "The free plan never charges you."}</li>
+              <li>· {onTrial ? "Your trial ends on its own and nothing is charged." : paid ? "For cancellations, say so here and we will handle it." : "The free plan never charges you."}</li>
             </ul>
           </Panel>
         </>

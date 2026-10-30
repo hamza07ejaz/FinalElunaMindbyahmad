@@ -1,7 +1,17 @@
 // Default plan rules. These are the FALLBACK values.
 // The admin panel stores overrides in the `app_settings` table, and `lib/settings.ts`
 // merges them over these. Server code should read getSettings(), not DEFAULT_RULES.
-export type Plan = "free" | "premium";
+/**
+ * A plan is a slug now, not one of two words.
+ *
+ * The two-value union was what made a third tier a code change: every place
+ * that stored, compared or displayed a plan had to know the complete list at
+ * compile time. Plans live in the database; this is just the key.
+ *
+ * "free" and "premium" remain the slugs of the two seeded plans, so existing
+ * accounts and existing comparisons keep working.
+ */
+export type Plan = string;
 
 export type Feature =
   | "chat" | "notes" | "qna" | "upload" | "transcript" | "translate" | "flashcards" | "test" | "visualMap"
@@ -46,16 +56,21 @@ export const FEATURES = Object.keys(DEFAULT_RULES) as Feature[];
 export type UsageSummary = Record<Feature, { used: number; limit: number; locked: boolean }>;
 
 // Pure helper (safe on client and server): turns today's counters into per-feature usage.
-export function buildUsageSummary(plan: Plan, counts: Record<string, number>, rules: Record<Feature, Rule> = DEFAULT_RULES): UsageSummary {
+export function buildUsageSummary(
+  counts: Record<string, number>,
+  /** The signed-in person's plan: tool -> uses per day. 0 means not included. */
+  limits: Record<string, number>,
+): UsageSummary {
   const out = {} as UsageSummary;
   for (const f of FEATURES) {
-    const r = rules[f];
-    const premium = plan === "premium";
-    const locked = !premium && r.premiumOnly;
+    const limit = Number(limits[f]) || 0;
     out[f] = {
       used: counts[f] ?? 0,
-      limit: premium ? r.premiumPerDay : locked ? 0 : r.freePerDay,
-      locked,
+      limit,
+      // "Locked" is no longer a separate flag on the tool. A tool a plan does
+      // not include simply has no allowance in it, which is the same fact
+      // stated once rather than twice.
+      locked: limit <= 0,
     };
   }
   return out;

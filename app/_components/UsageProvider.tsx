@@ -3,7 +3,25 @@ import { createContext, useCallback, useContext, useState, type ReactNode } from
 import type { Plan, UsageSummary } from "../../lib/plans";
 
 type State = {
-  plan: Plan;                 // premium while a trial is running
+  /** The plan's slug. The trial plan's slug while a trial is running. */
+  plan: Plan;
+  /**
+   * The plan's name, as the owner typed it.
+   *
+   * There are as many plans as the owner has made now, so nothing in the UI
+   * can say "Premium" and be right. It says whatever this is.
+   */
+  planName: string;
+  /** True on any plan above free, trial included. Replaces plan === "premium". */
+  paid: boolean;
+  /**
+   * The plans somebody could buy from here, cheapest first.
+   *
+   * The Upgrade button needs this to know what to do: with one plan it opens
+   * checkout, with several it sends people to the pricing page to choose, and
+   * with none it does not appear at all.
+   */
+  buyable?: { slug: string; name: string }[];
   email: string;
   usage: UsageSummary;
   role?: "user" | "sub_admin" | "admin";
@@ -28,7 +46,8 @@ export function UsageProvider({ initial, children }: { initial: State; children:
       if (r.ok) {
         const j = await r.json();
         setS({
-          plan: j.plan, email: j.email ?? "", usage: j.usage, role: j.role,
+          plan: j.plan, planName: j.planName ?? "", paid: !!j.paid, buyable: j.buyable ?? [],
+          email: j.email ?? "", usage: j.usage, role: j.role,
           onTrial: j.onTrial, trialEndsAt: j.trialEndsAt, trialEligible: j.trialEligible,
           trialRequiresCard: j.trialRequiresCard, trialDays: j.trialDays,
           supportEnabled: j.supportEnabled,

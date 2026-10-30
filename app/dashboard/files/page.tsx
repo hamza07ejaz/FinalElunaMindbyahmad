@@ -33,7 +33,7 @@ const when = (iso: string) => {
 };
 
 export default function FilesPage() {
-  const { usage, plan } = useUsage();
+  const { usage, paid } = useUsage();
   const attach = useAttach();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export default function FilesPage() {
           <div className="rounded-2xl border border-dashed border-white/15 p-6 text-center">
             <p className="text-sm font-medium text-paper">You have used today&apos;s uploads.</p>
             <p className="mt-1 text-xs text-muted">The allowance resets tomorrow. Files already here still work.</p>
-            {plan !== "premium" && <div className="mt-4 flex justify-center"><UpgradeButton label="Get more uploads" className="btn btn-primary btn-sm" /></div>}
+            {!paid && <div className="mt-4 flex justify-center"><UpgradeButton label="Get more uploads" className="btn btn-primary btn-sm" /></div>}
           </div>
         ) : (
           <DropZone onPick={(f) => { void onPick(f); }} busy={attach.busy} />

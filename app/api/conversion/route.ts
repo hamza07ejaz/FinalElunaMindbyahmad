@@ -51,6 +51,9 @@ export async function POST(req: Request) {
         transaction_id: String(row.id),
         value,
         currency: currency.toUpperCase(),
+        // The plan's slug. Not personal data, and it is what lets revenue be
+        // reported per tier instead of as one undifferentiated "premium".
+        plan: String(row.plan || ""),
       },
     });
   } catch (err) {

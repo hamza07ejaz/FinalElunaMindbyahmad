@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     trialEndsAt: auth.trialEndsAt,
     used: auth.trialUsed,
     plan: auth.plan,
-    eligible: flags.trialEnabled && !auth.trialUsed && auth.paidPlan !== "premium" && !auth.blocked,
+    eligible: flags.trialEnabled && !auth.trialUsed && !auth.subscribed && !auth.blocked,
   });
 }
 

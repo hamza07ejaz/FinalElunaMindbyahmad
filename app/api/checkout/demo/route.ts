@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser, logAdmin } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase/admin";
 import { checkoutMode } from "../../../../lib/stripe";
+import { loadPlans, trialPlan } from "../../../../lib/tiers";
 
 export const dynamic = "force-dynamic";
 
@@ -21,15 +22,21 @@ export async function POST(req: Request) {
   const auth = await requireUser(req);
   if (!auth) return NextResponse.json({ error: "Please log in first." }, { status: 401 });
   if (auth.blocked) return NextResponse.json({ error: "This account is suspended." }, { status: 403 });
-  if (auth.plan === "premium") return NextResponse.json({ ok: true, already: true });
+  // Which plan a demo hands out follows the same rule as a trial: the entry
+  // paid tier, not whichever one happens to be most expensive.
+  const grant = trialPlan(await loadPlans());
+  if (!grant) return NextResponse.json({ error: "There are no paid plans to demo." }, { status: 404 });
+  if (auth.plan === grant.slug) return NextResponse.json({ ok: true, already: true });
 
-  const { error } = await supabaseAdmin().from("profiles").update({ plan: "premium" }).eq("id", auth.user.id);
+  const { error } = await supabaseAdmin().from("profiles").update({ plan: grant.slug }).eq("id", auth.user.id);
   if (error) {
     console.error("demo upgrade failed:", error.message);
     return NextResponse.json({ error: "Could not switch your plan. Please try again." }, { status: 500 });
   }
 
   // Leave a trail, so a demo upgrade is never mistaken for a real sale.
-  await logAdmin(auth, "demo.upgrade", auth.user.email ?? auth.user.id, { note: "Demo checkout, no payment taken" });
+  await logAdmin(auth, "demo.upgrade", auth.user.email ?? auth.user.id, {
+    note: `Demo checkout, no payment taken. Granted ${grant.slug}.`,
+  });
   return NextResponse.json({ ok: true });
 }

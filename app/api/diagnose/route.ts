@@ -3,6 +3,7 @@ import { requireUser } from "../../../lib/auth";
 import { supabaseAdmin } from "../../../lib/supabase/admin";
 import { getSettings } from "../../../lib/settings";
 import { checkoutMode, readiness, stripeConfig } from "../../../lib/stripe";
+import { loadPlans, purchasablePlans } from "../../../lib/tiers";
 
 export const dynamic = "force-dynamic";
 
@@ -86,7 +87,7 @@ export async function GET(req: Request) {
 
   // Payments. No key or secret appears here — only what is set and whether it works.
   const stripeCfg = await stripeConfig(true);
-  const stripeReady = readiness(stripeCfg);
+  const stripeReady = readiness(stripeCfg, purchasablePlans(await loadPlans()).length);
   const mode = await checkoutMode();
   const payments = {
     checkout: mode,   // live | demo | off

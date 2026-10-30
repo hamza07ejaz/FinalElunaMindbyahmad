@@ -346,6 +346,8 @@ Then Admin → **Payments**:
 2. Press **Show my Stripe prices** and click the one you want to sell. If you
    have not made one yet, fill in the name, amount, currency and interval right
    there and it creates it in Stripe for you.
+   *Selling more than one plan? Make a price in Stripe for each, then paste
+   each price id into its plan in Admin → Plans & limits (below).*
 3. Press **Check setup**. It tells you, line by line, what is working and what
    is not.
 
@@ -358,6 +360,47 @@ The page shows you what mode you are in:
   moment you save a real key.
 
 Checkout turns on automatically as soon as the keys are saved. No redeploy.
+
+---
+
+## 8b. Your plans — Admin → Plans & limits
+
+You can sell as many plans as you like. They are rows in the database, not
+something written into the code, so adding one is a few minutes in the admin
+panel and no redeploy.
+
+Each plan has:
+
+- **A name and a price** — the price is whatever text you type (`$6.99`,
+  `PKR 2,500`, `Let's talk`). It is only what the card *says*.
+- **A Stripe price ID** — this is what is actually charged. Make the price in
+  Stripe, paste its `price_…` id here. A plan with no price id still shows on
+  the pricing page, but it says "Talk to us" instead of a buy button.
+- **What it includes, per day** — one number per tool. **0 means the tool is
+  not in that plan**, which is how a tool becomes paid-only: leave it at 0 on
+  Free and set a number on the plans that include it.
+- **A subtitle and extra selling points** — the words under the name and the
+  extra ticks on the card.
+
+The arrows on the left set the order the cards appear in. The switch on the
+right hides a plan without deleting it — use that while you are still setting
+one up. A new plan starts switched off for the same reason.
+
+**One plan is marked "Free · new accounts".** That is the plan everybody
+starts on and the one a cancelled subscription comes back to. You can move
+that mark to another plan, but there is always exactly one.
+
+**Deleting a plan** moves everyone on it back to the free plan. It does *not*
+cancel their Stripe subscription — do that in Stripe, or they keep being
+charged for a plan that no longer exists.
+
+Free trials hand out the **cheapest paid plan**, so if you want a trial of a
+different tier, move that tier to the top of the paid plans with the arrows.
+
+The **per-request ceilings** at the bottom of the same page are not per plan:
+they are how much text each tool accepts and how long its answers can be.
+Those protect your AI bill and the model's own limits, so they are the same
+for everybody.
 
 ---
 
@@ -401,7 +444,7 @@ of bandwidth a month.
 **Your AI provider is the one real cost.** Gemini's free tier has a daily
 request cap. If the app gets busy, that cap is what you hit first — not Supabase
 and not Vercel. Admin → Plans & limits is where you tighten the per-user daily
-limits, and **Admin → Branding & site → Pause AI** is the emergency switch if
+allowances, and **Admin → Branding & site → Pause AI** is the emergency switch if
 costs ever spike: the site stays up and every tool returns a polite "paused"
 message.
 

@@ -11,11 +11,19 @@ type Row = {
   uses_total: number; uses_today: number; chats: number; notes: number;
 };
 
-/** The plan badge has three states now that a trial can grant Premium. */
-function PlanPill({ u }: { u: Row }) {
-  if (u.plan === "premium") return <Pill tone="premium">Premium</Pill>;
+type PlanOption = { slug: string; name: string; isDefault: boolean };
+
+/**
+ * The plan badge.
+ *
+ * It shows whichever plan the account is on by name. A trial shows as a trial,
+ * because somebody mid-trial is a different conversation from somebody paying.
+ */
+function PlanPill({ u, plans }: { u: Row; plans: PlanOption[] }) {
+  const row = plans.find((p) => p.slug === u.plan);
+  if (row && !row.isDefault) return <Pill tone="premium">{row.name}</Pill>;
   if (u.on_trial) return <Pill tone="trial">On trial</Pill>;
-  return <Pill tone="free">Free</Pill>;
+  return <Pill tone="free">{row?.name ?? "Free"}</Pill>;
 }
 
 function RolePill({ role }: { role: string }) {
@@ -26,6 +34,7 @@ function RolePill({ role }: { role: string }) {
 
 export default function UsersPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [plans, setPlans] = useState<PlanOption[]>([]);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
   const [search, setSearch] = useState("");
@@ -49,7 +58,7 @@ export default function UsersPage() {
       const r = await fetch(`/api/admin/users?${p}`, { cache: "no-store" });
       const j = await r.json();
       if (!r.ok) { setError(j.error || "Could not load users."); setRows([]); return; }
-      setRows(j.users); setTotal(j.total);
+      setRows(j.users); setTotal(j.total); if (Array.isArray(j.plans)) setPlans(j.plans);
     } catch { setError("Network problem. Reload the page to try again."); setRows([]); }
   }, [search, plan, status, sort, page]);
 
@@ -67,7 +76,13 @@ export default function UsersPage() {
             <input className="input !pl-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by email…" />
           </label>
           <select className="input" value={plan} onChange={(e) => { setPlan(e.target.value); setPage(0); }} aria-label="Filter by plan">
-            <option value="all">All plans</option><option value="free">Free</option><option value="trial">On trial</option><option value="premium">Premium</option>
+            <option value="all">All plans</option>
+            <option value="free">Free</option>
+            <option value="trial">On trial</option>
+            <option value="paid">Any paid plan</option>
+            {plans.filter((p) => !p.isDefault).map((p) => (
+              <option key={p.slug} value={p.slug}>{p.name}</option>
+            ))}
           </select>
           <select className="input" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} aria-label="Filter by status">
             <option value="all">All accounts</option><option value="active">Active</option><option value="blocked">Blocked</option>
@@ -113,7 +128,7 @@ export default function UsersPage() {
                         {u.status === "blocked" && <Pill tone="blocked">Blocked</Pill>}
                       </div>
                     </td>
-                    <td className="px-3 py-3"><PlanPill u={u} /></td>
+                    <td className="px-3 py-3"><PlanPill u={u} plans={plans} /></td>
                     <td className="px-3 py-3 text-paper/85">{u.uses_today}</td>
                     <td className="px-3 py-3 text-paper/85">{u.uses_total}</td>
                     <td className="px-3 py-3 text-muted">{u.chats}</td>
@@ -134,7 +149,7 @@ export default function UsersPage() {
               <Link key={u.id} href={`/admin/users/${u.id}`} className="glass card-hover block rounded-2xl p-4">
                 <div className="flex items-start justify-between gap-3">
                   <span className="min-w-0 flex-1 truncate text-paper">{u.email || "(no email)"}</span>
-                  <PlanPill u={u} />
+                  <PlanPill u={u} plans={plans} />
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                   <span>{u.uses_today} today</span><span>{u.uses_total} all time</span>

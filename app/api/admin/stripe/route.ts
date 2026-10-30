@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { logAdmin } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase/admin";
+import { loadPlans, purchasablePlans } from "../../../../lib/tiers";
 import {
   clearStripeCache, clientFor, explainStripe, keyMode, maskKey, readiness, stripeConfig,
 } from "../../../../lib/stripe";
@@ -39,7 +40,7 @@ const webhookUrlFor = (req: Request) => `${appUrl(req)}/api/stripe-webhook`;
 /** The whole state of the setup, with nothing secret in it. */
 async function state(req: Request) {
   const c = await stripeConfig(true);
-  const r = readiness(c);
+  const r = readiness(c, purchasablePlans(await loadPlans()).length);
   const wanted = webhookUrlFor(req);
 
   return {

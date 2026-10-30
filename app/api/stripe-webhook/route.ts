@@ -4,13 +4,14 @@ import { stripe, stripeConfig } from "../../../lib/stripe";
 import { supabaseAdmin } from "../../../lib/supabase/admin";
 import { captureError } from "../../../lib/errors";
 import { notes } from "../../../lib/notify";
+import { defaultPlan, loadPlans, planForPrice, purchasablePlans, type PlanRow } from "../../../lib/tiers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Match = { userId?: string | null; customerId?: string | null };
 
-async function setPlan(match: Match, plan: "free" | "premium", extra: Record<string, unknown> = {}) {
+async function setPlan(match: Match, plan: string, extra: Record<string, unknown> = {}) {
   const db = supabaseAdmin();
   let q = db.from("profiles").update({ plan, ...extra });
   if (match.userId) q = q.eq("id", match.userId);
@@ -18,6 +19,44 @@ async function setPlan(match: Match, plan: "free" | "premium", extra: Record<str
   else return;
   const { error } = await q;
   if (error) throw new Error(`profiles update failed: ${error.message}`);
+}
+
+/**
+ * Which plan this payment bought.
+ *
+ * The price Stripe charged is the authority: it is the thing the customer
+ * actually agreed to, and it cannot be forged the way a metadata field copied
+ * from a checkout session could be. The slug in metadata is the fallback for
+ * the case where an owner has since swapped a plan's price in Stripe, and the
+ * cheapest purchasable plan is the last resort so that a payment always grants
+ * *something* rather than silently leaving a paying customer on free.
+ */
+async function boughtPlan(priceId: string | null, slug: string | null | undefined): Promise<PlanRow | null> {
+  const plans = await loadPlans(true);
+  const byPrice = planForPrice(plans, priceId ?? "");
+  if (byPrice) return byPrice;
+
+  const bySlug = slug ? plans.find((p) => p.slug === slug && !p.isDefault) : null;
+  if (bySlug) return bySlug;
+
+  const fallback = purchasablePlans(plans)[0] ?? plans.find((p) => !p.isDefault) ?? null;
+  if (fallback) {
+    console.error(
+      `Payment for price ${priceId ?? "(none)"} matched no plan. Granting ${fallback.slug}. ` +
+      "Check the Stripe price id saved against each plan.",
+    );
+  }
+  return fallback;
+}
+
+/** The price on a subscription, which is what the plan is looked up by. */
+function priceOf(sub: Stripe.Subscription): string | null {
+  return sub.items?.data?.[0]?.price?.id ?? null;
+}
+
+/** Where a cancelled or unpaid subscription lands. */
+async function freeSlug(): Promise<string> {
+  return defaultPlan(await loadPlans()).slug;
 }
 
 const idOf = (v: string | { id: string } | null | undefined) => (typeof v === "string" ? v : v?.id ?? null);
@@ -71,7 +110,21 @@ export async function POST(req: Request) {
         const s = event.data.object as Stripe.Checkout.Session;
         if (s.mode !== "subscription") break;
         const userId = s.client_reference_id || s.metadata?.user_id;
-        await setPlan({ userId }, "premium", {
+
+        // Line items are not on the session object the webhook receives, so the
+        // price is read back from Stripe rather than guessed from the amount.
+        let priceId: string | null = null;
+        try {
+          const items = await (await stripe()).checkout.sessions.listLineItems(s.id, { limit: 1 });
+          priceId = items.data[0]?.price?.id ?? null;
+        } catch (err) {
+          console.error("could not read checkout line items:", (err as Error)?.message);
+        }
+
+        const bought = await boughtPlan(priceId, s.metadata?.plan);
+        if (!bought) throw new Error("A payment succeeded but no plan exists to grant.");
+
+        await setPlan({ userId }, bought.slug, {
           stripe_customer_id: idOf(s.customer as any),
           stripe_subscription_id: idOf(s.subscription as any),
         });
@@ -95,6 +148,8 @@ export async function POST(req: Request) {
             user_id: userId,
             amount_total: s.amount_total ?? 0,
             currency: (s.currency ?? "usd").toLowerCase(),
+            // So the purchase event can report revenue per plan.
+            plan: bought.slug,
           });
           // A duplicate is the expected case on a retry. Anything else is
           // logged and ignored: a missed conversion tag must never cost the
@@ -106,7 +161,7 @@ export async function POST(req: Request) {
           // Only on the first insert, so a webhook Stripe retries does not
           // ring the bell a second time.
           if (!convErr) {
-            notes.planChanged(userId, "premium");
+            notes.planChanged(userId, bought.name);
             const paid = ((s.amount_total ?? 0) / 100).toFixed(2);
             notes.payment(s.customer_details?.email ?? "a customer", `${paid} ${(s.currency ?? "usd").toUpperCase()}`);
           }
@@ -129,20 +184,28 @@ export async function POST(req: Request) {
           current_period_end: periodEnd(sub),
         };
 
-        if (sub.status === "active" || sub.status === "trialing") {
-          await setPlan(match, "premium", state);
-        } else if (["canceled", "unpaid", "incomplete_expired"].includes(sub.status)) {
-          await setPlan(match, "free", state);
+        if (["canceled", "unpaid", "incomplete_expired"].includes(sub.status)) {
+          await setPlan(match, await freeSlug(), state);
         } else {
-          // past_due / incomplete: Stripe is still retrying the card, so the
-          // plan stays as it is — but the status is recorded so support can see why.
-          await setPlan(match, "premium", state);
+          /*
+           * active, trialing, past_due and incomplete all keep the plan the
+           * subscription is for — resolved from its current price, so a
+           * customer who switches plan in Stripe's portal is moved here too
+           * rather than staying on whatever they first bought.
+           *
+           * past_due deliberately keeps access while Stripe retries the card:
+           * cutting someone off on the first failed retry loses the customer
+           * more often than it saves the margin.
+           */
+          const current = await boughtPlan(priceOf(sub), sub.metadata?.plan);
+          if (!current) throw new Error("A subscription is active but no plan exists to grant.");
+          await setPlan(match, current.slug, state);
         }
         break;
       }
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
-        await setPlan({ userId: sub.metadata?.user_id, customerId: idOf(sub.customer as any) }, "free", {
+        await setPlan({ userId: sub.metadata?.user_id, customerId: idOf(sub.customer as any) }, await freeSlug(), {
           subscription_status: "canceled",
           cancel_at_period_end: false,
           current_period_end: null,

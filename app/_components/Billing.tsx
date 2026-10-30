@@ -4,8 +4,12 @@ import { Icon } from "./Icon";
 import { UpgradeButton } from "./Upgrade";
 
 export type Billing = {
-  plan: "free" | "premium";
-  paidPlan: "free" | "premium";
+  plan: string;
+  paidPlan: string;
+  /** The plan's name as the owner typed it. There is no fixed set of tiers now. */
+  planName: string;
+  /** True when they actually pay for a plan, trials excluded. */
+  subscribed: boolean;
   onTrial: boolean;
   trialEndsAt: string | null;
   status: string | null;
@@ -66,7 +70,9 @@ export function BillingCard() {
   if (!b) return <div className="skeleton h-28 rounded-2xl" />;
 
   const trialing = b.onTrial;
-  const premium = b.paidPlan === "premium";
+  const paying = b.subscribed;
+  // On a trial the plan name is the trial plan's; otherwise it is theirs.
+  const name = b.planName || "your plan";
   const left = daysLeft(b.trialEndsAt);
 
   return (
@@ -76,27 +82,27 @@ export function BillingCard() {
         <div className="rounded-xl border border-violet-400/25 bg-violet-500/5 p-4">
           <p className="flex items-center gap-2 text-sm font-medium text-paper">
             <Icon name="zap" size={15} className="text-lamp" />
-            Premium trial · {left === 0 ? "ends today" : `${left} day${left === 1 ? "" : "s"} left`}
+            {name} trial · {left === 0 ? "ends today" : `${left} day${left === 1 ? "" : "s"} left`}
           </p>
           <p className="mt-1.5 text-xs text-muted">
             {b.hasSubscription
               ? b.cancelAtPeriodEnd
-                ? `Already cancelled. You keep Premium until ${date(b.trialEndsAt)} and will not be charged.`
+                ? `Already cancelled. You keep ${name} until ${date(b.trialEndsAt)} and will not be charged.`
                 : `Your card is on file. The first payment is taken on ${date(b.trialEndsAt)} unless you cancel before then — cancelling during the trial costs nothing.`
               : `No card is held. On ${date(b.trialEndsAt)} you simply drop back to the free plan.`}
           </p>
         </div>
-      ) : premium ? (
+      ) : paying ? (
         <div className="rounded-xl border border-mint/25 bg-mint/5 p-4">
           <p className="flex items-center gap-2 text-sm font-medium text-paper">
-            <Icon name="check" size={15} className="text-mint" /> Premium
+            <Icon name="check" size={15} className="text-mint" /> {name}
             {b.status === "past_due" && <span className="chip !border-red-400/40 !bg-red-500/15 !text-red-200">Payment failed</span>}
           </p>
           <p className="mt-1.5 text-xs text-muted">
             {b.status === "past_due"
-              ? "Stripe could not take the last payment and is retrying. Update your card to keep Premium."
+              ? `Stripe could not take the last payment and is retrying. Update your card to keep ${name}.`
               : b.cancelAtPeriodEnd
-                ? `Cancelled. Premium stays active until ${date(b.renewsAt)}, then your account moves to the free plan. Nothing more will be charged.`
+                ? `Cancelled. ${name} stays active until ${date(b.renewsAt)}, then your account moves to the free plan. Nothing more will be charged.`
                 : b.renewsAt
                   ? `Renews on ${date(b.renewsAt)}. You can cancel any time and keep access until that date.`
                   : "Active."}
@@ -110,8 +116,8 @@ export function BillingCard() {
             {b.trialUsed
               ? " Your free trial has been used."
               : b.trialRequiresCard
-                ? ` Premium starts with a ${b.trialDays}-day free trial — cancel any time during it and you pay nothing.`
-                : ` You can still try Premium free for ${b.trialDays} days, no card needed.`}
+                ? ` A paid plan starts with a ${b.trialDays}-day free trial — cancel any time during it and you pay nothing.`
+                : ` You can still try a paid plan free for ${b.trialDays} days, no card needed.`}
           </p>
         </div>
       )}
@@ -124,16 +130,16 @@ export function BillingCard() {
           <button type="button" className="btn btn-ghost btn-sm" onClick={manage} disabled={busy}>
             {busy ? <><span className="spinner" /> Opening…</> : <><Icon name="shield" size={14} /> Manage or cancel</>}
           </button>
-        ) : premium || trialing ? (
+        ) : paying || trialing ? (
           <p className="text-xs text-muted">
             To cancel, message us from Help &amp; support{b.supportEmail ? <> or email {b.supportEmail}</> : null} and we will handle it.
           </p>
         ) : null}
 
-        {!premium && !trialing && <UpgradeButton label="Go Premium" className="btn btn-primary btn-sm" />}
+        {!paying && !trialing && <UpgradeButton className="btn btn-primary btn-sm" />}
         {trialing && !b.cancelAtPeriodEnd && b.hasSubscription && (
           <p className="w-full text-xs text-mute/80">
-            Cancelling opens Stripe, where it takes one click. You keep Premium for the rest of the trial either way.
+            Cancelling opens Stripe, where it takes one click. You keep {name} for the rest of the trial either way.
           </p>
         )}
       </div>

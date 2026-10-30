@@ -23,8 +23,9 @@ function NavLink({ href, icon, label, active, locked, onClick }: { href: string;
 }
 
 function UsageMeter() {
-  const { plan, usage, onTrial, trialEndsAt } = useUsage();
-  const rows = TOOLS.filter((t) => !usage[t.key].locked && (plan === "premium" ? t.key === "chat" : true));
+  const { planName, paid, usage, onTrial, trialEndsAt } = useUsage();
+  // On a paid plan the per-tool bars are noise, so only chat is metered there.
+  const rows = TOOLS.filter((t) => !usage[t.key].locked && (paid ? t.key === "chat" : true));
   const totalUsed = rows.reduce((a, t) => a + usage[t.key].used, 0);
   const totalLimit = rows.reduce((a, t) => a + usage[t.key].limit, 0);
   const pct = totalLimit ? Math.min(100, Math.round((totalUsed / totalLimit) * 100)) : 0;
@@ -39,11 +40,11 @@ function UsageMeter() {
           <defs><linearGradient id="ringg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#8b5cf6" /><stop offset="1" stopColor="#22d3ee" /></linearGradient></defs>
         </svg>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-paper">{onTrial ? "Premium trial" : plan === "premium" ? "Premium plan" : "Free plan"}</p>
+          <p className="text-sm font-semibold text-paper">{onTrial ? `${planName} trial` : planName}</p>
           <p className="text-xs text-muted">
             {onTrial
               ? `${trialDaysLeft(trialEndsAt)} day${trialDaysLeft(trialEndsAt) === 1 ? "" : "s"} left · ${pct}% of today's limit used`
-              : `${pct}% of today's ${plan === "premium" ? "chat" : "free"} limit used`}
+              : `${pct}% of today's ${paid ? "chat" : "free"} limit used`}
           </p>
         </div>
       </div>
@@ -65,17 +66,17 @@ function UsageMeter() {
       {onTrial && (
         <div className="mt-3 space-y-2">
           <p className="text-[0.68rem] text-mute/80">When the trial ends you keep the Free plan — nothing is charged.</p>
-          <UpgradeButton label="Keep Premium" className="btn btn-primary btn-sm w-full" />
+          <UpgradeButton label={`Keep ${planName}`} className="btn btn-primary btn-sm w-full" />
         </div>
       )}
-      {!onTrial && plan !== "premium" && <div className="mt-3"><UpgradeButton label="Go Premium" className="btn btn-primary btn-sm w-full" /></div>}
+      {!onTrial && !paid && <div className="mt-3"><UpgradeButton className="btn btn-primary btn-sm w-full" /></div>}
     </div>
   );
 }
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { usage, email, plan, role, onTrial, supportEnabled } = useUsage();
+  const { usage, email, planName, paid, role, onTrial, supportEnabled } = useUsage();
   const free = TOOLS.filter((t) => !t.premium && t.key !== "chat");
   const prem = TOOLS.filter((t) => t.premium);
   const is = (href: string) => pathname === href;
@@ -118,7 +119,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <UsageMeter />
         <div className="flex items-center gap-3 rounded-xl px-2 py-1.5">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-s2 to-s5 text-sm font-semibold text-paper">{(email[0] || "U").toUpperCase()}</span>
-          <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-paper">{email.split("@")[0] || "You"}</p><p className="truncate text-xs text-muted">{onTrial ? "Premium trial" : plan === "premium" ? "Premium" : "Free plan"}</p></div>
+          <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-paper">{email.split("@")[0] || "You"}</p><p className="truncate text-xs text-muted">{onTrial ? `${planName} trial` : planName}</p></div>
           <button type="button" onClick={logout} title="Log out" className="rounded-lg p-2 text-muted transition hover:bg-white/10 hover:text-paper"><Icon name="logout" size={18} /></button>
         </div>
       </div>

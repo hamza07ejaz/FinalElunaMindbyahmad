@@ -22,7 +22,7 @@ const ALLOWED = new Set([
   "tool",            // which study tool, e.g. "notes"
   "file_kind",       // "document" | "image" | "audio" — never the name
   "size_bucket",     // "small" | "medium" | "large" — never the byte count
-  "plan",            // "free" | "premium"
+  "plan",            // a plan slug, e.g. "premium" — never a person
   "value",           // a number, for purchases and checkout starts
   "currency",        // ISO code
   "transaction_id",  // Stripe's id for the payment
@@ -109,17 +109,21 @@ export const analytics = {
   /** A tool that finished and produced something. The tool, not the subject. */
   aiActionComplete: (tool: string) => track("ai_action_complete", { tool }),
 
-  beginCheckout: (value: number, currency: string) =>
+  /**
+   * @param plan the plan's slug, so revenue can be reported per tier. A slug
+   *   is a product name, not anything about the person buying it.
+   */
+  beginCheckout: (value: number, currency: string, plan = "") =>
     track("begin_checkout", {
       value, currency,
-      items: [{ item_id: "premium", item_name: "Premium", price: value }],
+      items: [{ item_id: plan || "plan", item_name: plan || "plan", price: value }],
     }),
 
   /** Only ever called with a payment Stripe has already confirmed. */
-  purchase: (transactionId: string, value: number, currency: string) =>
+  purchase: (transactionId: string, value: number, currency: string, plan = "") =>
     track("purchase", {
       transaction_id: transactionId, value, currency,
-      items: [{ item_id: "premium", item_name: "Premium", price: value }],
+      items: [{ item_id: plan || "plan", item_name: plan || "plan", price: value }],
     }),
 };
 
