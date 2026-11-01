@@ -254,6 +254,12 @@ lecture recordings.
 Press **Test before saving** before you keep it. A wrong model name does not
 fail when you save it — it fails later, when a student presses a button.
 
+Newer models sometimes want their settings spelled differently (for example
+`max_completion_tokens` instead of `max_tokens`). You do not have to do
+anything about that: the first request to such a model is refused, the app
+reads the refusal, adjusts, and sends it again — then remembers, so it costs
+one request the first time and nothing afterwards.
+
 > Newer is not automatically better. The big models cost several times more per
 > answer, and a study tool makes a great many small requests. A mini or flash
 > model is usually the right default, with a bigger one added below it as a

@@ -133,7 +133,16 @@ export function clientFor(p: Provider): OpenAI {
     // failing over to the next key is a better answer to a dead provider anyway.
     maxRetries: Number(process.env.AI_MAX_RETRIES ?? 0),
   });
-  if (p.baseUrl) patchForCompat(client, p.baseUrl);
+  /*
+   * Always, not only for providers with their own base URL.
+   *
+   * It used to be fitted only when a base URL was set, on the assumption that
+   * OpenAI itself needs no accommodating. Then OpenAI shipped models that
+   * reject `max_tokens` and insist on `max_completion_tokens`, and every tool
+   * failed with a 400 the moment somebody chose one — on the provider the app
+   * was written against.
+   */
+  patchForCompat(client, p.baseUrl, p.model);
   return client;
 }
 
@@ -499,10 +508,72 @@ export function explain(err: unknown): string {
 const MIN_OUTPUT_TOKENS = num(process.env.AI_MIN_OUTPUT_TOKENS, 2000);
 
 /** Other providers differ on a few parameters, so adapt requests in ONE place. */
-function patchForCompat(c: OpenAI, baseUrl: string) {
+/**
+ * What a provider has told us it will not accept.
+ *
+ * Learnt from the provider's own refusal rather than from a list of model
+ * names kept here. Model names change every few months; a hardcoded list of
+ * "the new ones take max_completion_tokens" would be wrong within one release
+ * and would have to be updated by somebody who noticed. The 400 says exactly
+ * what is wrong, in words, so the answer is read out of it once and remembered
+ * for the life of the process.
+ *
+ * Keyed by provider and model together: two models behind one key do not
+ * necessarily agree about this.
+ */
+type Quirk = "renameMaxTokens" | "noTemperature";
+const quirks = new Map<string, Set<Quirk>>();
+
+/** Exported so the admin screen could show it one day; mostly for tests. */
+export function knownQuirks(baseUrl: string, model: string): Quirk[] {
+  return [...(quirks.get(`${baseUrl}|${model}`) ?? [])];
+}
+
+export function clearQuirks() { quirks.clear(); }
+
+function noteQuirk(key: string, q: Quirk) {
+  const set = quirks.get(key) ?? new Set<Quirk>();
+  set.add(q);
+  quirks.set(key, set);
+}
+
+/**
+ * Read a refusal and work out which parameter it is about.
+ *
+ * Deliberately matched on the parameter name in the message rather than on a
+ * status code alone: a 400 can mean many things, and guessing wrong would mean
+ * silently dropping a parameter that was never the problem.
+ */
+function quirkFromError(err: unknown): Quirk | null {
+  const e = err as { status?: number; message?: string; error?: { message?: string } };
+  if (e?.status !== 400) return null;
+  const m = `${e?.error?.message ?? ""} ${e?.message ?? ""}`.toLowerCase();
+
+  if (m.includes("max_completion_tokens")) return "renameMaxTokens";
+  if (m.includes("temperature") && /unsupported|not support|unknown|invalid/.test(m)) return "noTemperature";
+  return null;
+}
+
+/** Apply what is known about this model before the request goes out. */
+function applyQuirks(p: Record<string, unknown>, key: string) {
+  const known = quirks.get(key);
+  if (!known) return p;
+
+  if (known.has("renameMaxTokens") && p.max_tokens !== undefined) {
+    p.max_completion_tokens = p.max_tokens;
+    delete p.max_tokens;
+  }
+  if (known.has("noTemperature")) delete p.temperature;
+  return p;
+}
+
+function patchForCompat(c: OpenAI, baseUrl: string, model: string) {
   const completions = c.chat.completions as any;
   const original = completions.create.bind(completions);
-  const multiplier = num(process.env.AI_TOKEN_MULTIPLIER, 3); // "thinking" models spend output tokens internally
+  const hasBase = !!baseUrl;
+  // "thinking" models spend output tokens internally. Only for the providers
+  // this was measured on; it is not OpenAI's behaviour.
+  const multiplier = hasBase ? num(process.env.AI_TOKEN_MULTIPLIER, 3) : 1;
 
   // Gemini's 2.5 models think before answering and bill that thinking against
   // the output budget. On a small budget they can use all of it reasoning and
@@ -514,13 +585,21 @@ function patchForCompat(c: OpenAI, baseUrl: string) {
 
   completions.create = async (params: any, options?: any) => {
     const p = { ...params };
+    // The model actually being asked for, which may differ from the one the
+    // provider was configured with.
+    const key = `${baseUrl}|${p.model ?? model}`;
 
     // A floor as well as a multiplier: three times a small number is still small.
-    if (p.max_tokens) p.max_tokens = Math.max(MIN_OUTPUT_TOKENS, Math.ceil(p.max_tokens * multiplier));
+    if (multiplier !== 1 && p.max_tokens) p.max_tokens = Math.max(MIN_OUTPUT_TOKENS, Math.ceil(p.max_tokens * multiplier));
     if (quietThinking && p.reasoning_effort === undefined) p.reasoning_effort = "none";
 
-    // Strict structured outputs may not be supported: fall back to "reply with JSON" in the prompt.
-    const rf = p.response_format;
+    /*
+     * Strict structured outputs may not be supported: fall back to "reply with
+     * JSON" in the prompt. Only for providers merely speaking OpenAI's dialect
+     * — OpenAI itself supports this properly, and stripping it there would
+     * make its answers less reliable, not more.
+     */
+    const rf = hasBase ? p.response_format : null;
     if (rf) {
       delete p.response_format;
       if (rf.type === "json_schema" && rf.json_schema?.schema) {
@@ -535,10 +614,26 @@ function patchForCompat(c: OpenAI, baseUrl: string) {
       }
     }
 
+    applyQuirks(p, key);
+
     try {
       return await original(p, options);
     } catch (err) {
       const status = (err as { status?: number })?.status;
+
+      /*
+       * The provider has told us which parameter it dislikes. Write it down
+       * and send the request again — once. From then on every call to this
+       * model is shaped correctly on the first attempt, so the cost of
+       * learning is one failed request per model, ever.
+       */
+      const quirk = quirkFromError(err);
+      if (quirk && !quirks.get(key)?.has(quirk)) {
+        noteQuirk(key, quirk);
+        console.error(`${p.model ?? model} rejected a parameter (${quirk}); adjusting and retrying.`);
+        return await original(applyQuirks({ ...p }, key), options);
+      }
+
       if (p.reasoning_effort !== undefined && (status === 400 || status === 404 || status === 422)) {
         // This provider does not take the thinking switch. Send it without.
         const { reasoning_effort, ...rest } = p;
@@ -581,4 +676,4 @@ export async function readJson(req: Request): Promise<any> {
  * stream watchdog and the compatibility shim are where the bugs live, and they
  * are not reachable from outside without a real provider on the other end.
  */
-export const __internals = { textOf, nextWithin, drain, worthRetrying, patchForCompat, MIN_OUTPUT_TOKENS, StallError, EmptyStreamError };
+export const __internals = { textOf, nextWithin, drain, worthRetrying, patchForCompat, quirkFromError, applyQuirks, MIN_OUTPUT_TOKENS, StallError, EmptyStreamError };
