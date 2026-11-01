@@ -1,7 +1,9 @@
+import { cookies } from "next/headers";
 import { createSupabaseServer } from "./supabase/server";
 import { supabaseAdmin } from "./supabase/admin";
 import type { Plan } from "./plans";
 import { isPaidPlan, loadPlans, planFor, trialPlan } from "./tiers";
+import { rememberUser, rememberedUser } from "./identity";
 import { can, isStaff, toRole, type Permission, type Role } from "./roles";
 
 // Roles live in their own import-free module so client components can use
@@ -66,13 +68,47 @@ export async function requireUser(req?: Request): Promise<AuthResult | null> {
   let user: { id: string; email?: string } | null = null;
 
   const bearer = req?.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+
+  /*
+   * Which account this is, from a few seconds of memory where possible.
+   *
+   * Asking Supabase is a network round trip, and it happens before anything
+   * else on every request. The answer cannot change for a given token, so
+   * remembering it for a minute removes that trip from most requests. What
+   * the account is *allowed* to do is still read below, every time.
+   */
   if (bearer) {
-    const { data, error } = await supabaseAdmin().auth.getUser(bearer);
-    if (!error && data.user) user = { id: data.user.id, email: data.user.email };
+    const known = rememberedUser(bearer);
+    if (known) user = { id: known.userId, email: known.email };
+    else {
+      const { data, error } = await supabaseAdmin().auth.getUser(bearer);
+      if (!error && data.user) {
+        user = { id: data.user.id, email: data.user.email };
+        rememberUser(bearer, data.user.id, data.user.email);
+      }
+    }
   } else {
-    const supabase = await createSupabaseServer();
-    const { data, error } = await supabase.auth.getUser(); // validated by Supabase, not just decoded
-    if (!error && data.user) user = { id: data.user.id, email: data.user.email };
+    /*
+     * The cookie path. The cookie's value is the cache key — it is the same
+     * credential the library would send, so two requests carrying the same
+     * cookie are the same session by definition.
+     */
+    const jar = await cookies();
+    const sessionCookie = jar.getAll()
+      .filter((c) => /^sb-.*-auth-token/.test(c.name))
+      .map((c) => `${c.name}=${c.value}`)
+      .join(";");
+
+    const known = sessionCookie ? rememberedUser(sessionCookie) : null;
+    if (known) user = { id: known.userId, email: known.email };
+    else {
+      const supabase = await createSupabaseServer();
+      const { data, error } = await supabase.auth.getUser(); // validated by Supabase, not just decoded
+      if (!error && data.user) {
+        user = { id: data.user.id, email: data.user.email };
+        if (sessionCookie) rememberUser(sessionCookie, data.user.id, data.user.email);
+      }
+    }
   }
   if (!user) return null;
 

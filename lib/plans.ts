@@ -31,7 +31,9 @@ export const DEFAULT_RULES: Record<Feature, Rule> = {
   upload:       { label: "Uploads",      premiumOnly: false, freePerDay: 3,  premiumPerDay: 40,  maxInputChars: 200,  maxTokens: 1500 },
   transcript:   { label: "Transcripts",  premiumOnly: false, freePerDay: 1,  premiumPerDay: 20,  maxInputChars: 200,  maxTokens: 2000 },
   translate:    { label: "Translate",    premiumOnly: false, freePerDay: 3,  premiumPerDay: 80,  maxInputChars: 6000, maxTokens: 3000 },
-  chat:         { label: "Chat",         premiumOnly: false, freePerDay: 15, premiumPerDay: 300, maxInputChars: 2000, maxTokens: 1200 },
+  // 2,000 characters was about a page — short enough that a student pasting a
+  // question with its working, or an exam rubric, silently lost the end of it.
+  chat:         { label: "Chat",         premiumOnly: false, freePerDay: 15, premiumPerDay: 300, maxInputChars: 12000, maxTokens: 1200 },
   notes:        { label: "Notes",        premiumOnly: false, freePerDay: 2, premiumPerDay: 100, maxInputChars: 8000, maxTokens: 900 },
   qna:          { label: "Q&A",          premiumOnly: false, freePerDay: 1, premiumPerDay: 100, maxInputChars: 300,  maxTokens: 1800 },
   studyPlan:    { label: "Study Plan",   premiumOnly: false, freePerDay: 2, premiumPerDay: 40,  maxInputChars: 300,  maxTokens: 2500 },

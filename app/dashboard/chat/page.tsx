@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { AttachButton, AttachedChip, useAttach } from "../../_components/Attach";
 import { Icon } from "../../_components/Icon";
 import { Markdown } from "../../_components/Markdown";
@@ -20,6 +20,72 @@ const SUGGESTIONS = [
   { t: "Check my reasoning", d: "Here's my answer to a stats question — tell me where my logic goes wrong, don't just correct it", icon: "grammar" as const },
 ];
 const uid = () => Math.random().toString(36).slice(2);
+
+/**
+ * How long a question may be.
+ *
+ * Matches the server's own limit for chat. It is generous on purpose — a
+ * student pasting a question with their working, or an essay plan to be
+ * checked, should not have the end of it quietly removed — and anything
+ * longer belongs in a file, where the whole thing can be read.
+ */
+const MAX_MESSAGE = 12000;
+
+/**
+ * One message, re-rendered only when that message changes.
+ *
+ * While an answer streams, the state holds a new array every few frames — but
+ * only the message being written is a new object, so every other bubble can be
+ * skipped. Without that, a conversation of forty messages re-formatted all
+ * forty, twenty times a second, for the whole length of the answer. The work
+ * grew with the length of the conversation as well as the answer, which is the
+ * other half of why a long session ran the tab out of memory.
+ */
+const UserBubble = memo(function UserBubble({ m }: { m: Msg }) {
+  return (
+    <div className="pop-in flex flex-col items-end gap-1">
+      {m.file && (
+        <span className="flex max-w-[88%] items-center gap-1.5 rounded-lg bg-white/[0.06] px-2.5 py-1 text-xs text-paper/70">
+          <Icon name="attach" size={12} /> <span className="truncate">{m.file}</span>
+        </span>
+      )}
+      {/*
+        `break-words` because a student pasting a long token or typing one
+        unbroken word had the end of their own message clipped away — the
+        bubble grew past the screen and the page clips rather than scrolls.
+      */}
+      <div className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md px-4 py-3 text-[0.95rem] text-paper" style={{ background: "#1b2440" }}>{m.content}</div>
+    </div>
+  );
+});
+
+const AssistantBubble = memo(function AssistantBubble(
+  { m, writing }: { m: Msg; writing: boolean },
+) {
+  return (
+    <div className="pop-in group flex gap-3">
+      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl text-paper" style={{ background: "var(--lamp)" }}><Icon name="spark" size={16} /></span>
+      <div className="min-w-0 flex-1">
+        {m.error ? (
+          <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
+            {m.content}
+            {m.upgrade && <div className="mt-3"><UpgradeButton label="Get more messages" className="btn btn-primary btn-sm" /></div>}
+          </div>
+        ) : m.content === "" && writing ? (
+          <div className="dots py-3" role="status" aria-label="Thinking"><span /><span /><span /></div>
+        ) : (
+          <div className={writing ? "caret" : ""}><Markdown text={m.content} /></div>
+        )}
+        {!m.error && m.content && !writing && (
+          <div className="mt-1.5 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+            <CopyButton text={m.content} />
+            <Speak text={m.content} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
 
 export default function ChatPage() {
   const { usage, refresh, paid } = useUsage();
@@ -270,44 +336,9 @@ export default function ChatPage() {
               >
                 {messages.map((m, idx) => {
                   const last = idx === messages.length - 1;
-                  return m.role === "user" ? (
-                    <div key={m.id} className="pop-in flex flex-col items-end gap-1">
-                      {m.file && (
-                        <span className="flex max-w-[88%] items-center gap-1.5 rounded-lg bg-white/[0.06] px-2.5 py-1 text-xs text-paper/70">
-                          <Icon name="attach" size={12} /> <span className="truncate">{m.file}</span>
-                        </span>
-                      )}
-                      {/*
-                        `break-words` because a student pasting a long token or
-                        typing one unbroken word had the end of their own
-                        message clipped away — the bubble grew past the screen
-                        and the page clips rather than scrolls.
-                      */}
-                      <div className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md px-4 py-3 text-[0.95rem] text-paper" style={{ background: "#1b2440" }}>{m.content}</div>
-                    </div>
-                  ) : (
-                    <div key={m.id} className="pop-in group flex gap-3">
-                      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl text-paper" style={{ background: "var(--lamp)" }}><Icon name="spark" size={16} /></span>
-                      <div className="min-w-0 flex-1">
-                        {m.error ? (
-                          <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
-                            {m.content}
-                            {m.upgrade && <div className="mt-3"><UpgradeButton label="Get more messages" className="btn btn-primary btn-sm" /></div>}
-                          </div>
-                        ) : m.content === "" && streaming && last ? (
-                          <div className="dots py-3" role="status" aria-label="Thinking"><span /><span /><span /></div>
-                        ) : (
-                          <div className={streaming && last ? "caret" : ""}><Markdown text={m.content} /></div>
-                        )}
-                        {!m.error && m.content && !(streaming && last) && (
-                          <div className="mt-1.5 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
-                            <CopyButton text={m.content} />
-                            <Speak text={m.content} />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
+                  return m.role === "user"
+                    ? <UserBubble key={m.id} m={m} />
+                    : <AssistantBubble key={m.id} m={m} writing={streaming && last} />;
                 })}
               </div>
             )}
@@ -341,7 +372,7 @@ export default function ChatPage() {
                 label={undefined}
               />
               <textarea
-                ref={taRef} value={input} rows={1} maxLength={2000} placeholder="Message your tutor…" disabled={left === 0 && !streaming}
+                ref={taRef} value={input} rows={1} maxLength={MAX_MESSAGE} placeholder="Message your tutor…" disabled={left === 0 && !streaming}
                 className="max-h-40 min-h-[2.75rem] flex-1 resize-none bg-transparent px-3 py-2.5 text-[0.95rem] text-paper outline-none placeholder:text-mute/70"
                 onChange={(e) => { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`; }}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}

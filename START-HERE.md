@@ -445,6 +445,7 @@ moves to a bigger server, the app can use it:
 |---|---|---|
 | `FILE_CONCURRENCY` | `2` | How many files one server reads at the same time. Raise it only on a plan with more than one processor core. |
 | `FILE_QUEUE` | `8` | How many more may wait their turn before people are told it is busy. |
+| `AUTH_CACHE_MS` | `60000` | How long one server remembers which account a sign-in token belongs to, so most requests skip a round trip. Only the identity is remembered — the plan, the role and whether an account is suspended are read fresh every time, so suspending somebody still takes effect at once. Set to `0` to switch it off. |
 | `REQUEST_BUDGET_MS` | `50000` | How long a single upload may take in total. **Keep this below your plan's function timeout** (60s on Vercel's free and Pro plans by default) or the platform will cut the request off before the app can explain itself. |
 
 A file that runs out of time, or arrives while the server is full, does not

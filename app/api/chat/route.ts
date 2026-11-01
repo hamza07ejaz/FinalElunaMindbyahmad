@@ -35,24 +35,62 @@ export async function POST(req: Request) {
   if (!g.ok) return g.res;
 
   const body = await readJson(req);
-  const message = clean(body.message, g.rule.maxInputChars);
+  const raw = typeof body.message === "string" ? body.message.trim() : "";
+
+  /*
+   * Too long is said out loud, not trimmed in silence.
+   *
+   * The input used to be cut to the limit without a word, so a student who
+   * pasted a question with their working got an answer to the first half of
+   * it and no indication that the rest had been thrown away. A wrong answer
+   * you cannot account for is worse than a refusal you can.
+   */
+  if (raw.length > g.rule.maxInputChars)
+    return NextResponse.json({
+      error: `That message is ${raw.length.toLocaleString()} characters and the limit is ${g.rule.maxInputChars.toLocaleString()}. ` +
+        "Send the important part, or upload the rest as a file and ask about it.",
+    }, { status: 413 });
+
+  const message = clean(raw, g.rule.maxInputChars);
   if (!message) return NextResponse.json({ error: "Message cannot be empty." }, { status: 400 });
 
   const db = supabaseAdmin();
   const userId = g.auth.user.id;
   let chatId: string | null = typeof body.chatId === "string" ? body.chatId : null;
 
-  if (chatId) {
-    const { data: own } = await db.from("chats").select("id").eq("id", chatId).eq("user_id", userId).maybeSingle();
-    if (!own) return NextResponse.json({ error: "Chat not found." }, { status: 404 });
-  }
+  const uploadId = typeof body.uploadId === "string" ? body.uploadId : null;
+
+  /*
+   * Everything that only needs reading, read at the same time.
+   *
+   * These used to run one after another: does this chat belong to you, what
+   * was said in it, and what is in the attached file. None of them depends on
+   * the others, and in production each one is a round trip to a database in
+   * another region — so run in sequence they were most of the wait before the
+   * first word of the answer appeared.
+   *
+   * The history is fetched before ownership is confirmed, which is worth
+   * being explicit about: nothing is done with it until the check below has
+   * passed, and a request for somebody else's chat still gets a 404 and not
+   * one word of its contents.
+   */
+  const [own, histRows, up] = await Promise.all([
+    chatId
+      ? db.from("chats").select("id").eq("id", chatId).eq("user_id", userId).maybeSingle().then((r) => r.data)
+      : Promise.resolve(null),
+    chatId
+      ? db.from("chat_messages").select("role,content").eq("chat_id", chatId)
+          .order("created_at", { ascending: false }).limit(12).then((r) => r.data)
+      : Promise.resolve([]),
+    uploadId ? getOwnedUpload(userId, uploadId) : Promise.resolve(null),
+  ]);
+
+  if (chatId && !own) return NextResponse.json({ error: "Chat not found." }, { status: 404 });
 
   // An attached file: its text joins the prompt as context, not as the question.
-  const uploadId = typeof body.uploadId === "string" ? body.uploadId : null;
   let fileContext = "";
   let fileName = "";
   if (uploadId) {
-    const up = await getOwnedUpload(userId, uploadId);
     if (!up) return NextResponse.json({ error: "That file is no longer available." }, { status: 404 });
     if (up.status !== "ready")
       return NextResponse.json({ error: "That file is still being read. Give it a moment and try again." }, { status: 409 });
@@ -78,17 +116,24 @@ export async function POST(req: Request) {
       chatId = data.id as string;
     }
 
-    const { data: hist } = await db
-      .from("chat_messages").select("role,content").eq("chat_id", chatId)
-      .order("created_at", { ascending: false }).limit(12);
-    const history = (hist ?? []).reverse() as { role: "user" | "assistant"; content: string }[];
+    // Already loaded above, alongside the ownership check.
+    const history = (histRows ?? []).reverse() as { role: "user" | "assistant"; content: string }[];
 
-    // upload_id is only sent when a file is attached, so chat keeps working on a
-    // database where migration 006 has not been run yet.
-    await db.from("chat_messages").insert({
+    /*
+     * Write down the question, but do not wait for it.
+     *
+     * The answer does not depend on this row existing; only the transcript
+     * does. Awaiting it here put a whole round trip between the student
+     * pressing enter and the model being asked anything. It is awaited at the
+     * end instead, where nobody is watching.
+     *
+     * upload_id is only sent when a file is attached, so chat keeps working on
+     * a database where migration 006 has not been run yet.
+     */
+    const questionSaved = db.from("chat_messages").insert({
       chat_id: chatId, user_id: userId, role: "user", content: message,
       ...(uploadId ? { upload_id: uploadId } : {}),
-    });
+    }).then(({ error }) => { if (error) console.error("could not save the question:", error.message); });
 
     const payload = {
       model: MODEL,
@@ -118,6 +163,9 @@ export async function POST(req: Request) {
       },
       refund: () => g.refund(),
       save: async (answer) => {
+        // The question first, so a transcript can never hold an answer to
+        // nothing — by now it has had the whole generation to finish.
+        await questionSaved;
         await db.from("chat_messages").insert({ chat_id: cid, user_id: userId, role: "assistant", content: answer });
         await db.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", cid);
       },
