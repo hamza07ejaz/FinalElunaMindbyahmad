@@ -239,9 +239,28 @@ create. Then in the admin panel:
 
 Press **Save**, then **Test**. It should come back green within a few seconds.
 
+**To use OpenAI (ChatGPT) instead:** get a key at **platform.openai.com** →
+API keys → Create new secret key. In the admin panel press the **OpenAI**
+button at the top of the form, paste the key into **API key**, and leave Base
+URL empty.
+
+Then press **Show my models** rather than typing a model name. It asks your
+own key which models it can use and lists them **newest first** — click one and
+it fills the field. That is the only list that is ever right: OpenAI renames
+and retires models every few months, and a key does not always have access to
+everything that exists. The same button fills the transcription model for
+lecture recordings.
+
+Press **Test before saving** before you keep it. A wrong model name does not
+fail when you save it — it fails later, when a student presses a button.
+
+> Newer is not automatically better. The big models cost several times more per
+> answer, and a study tool makes a great many small requests. A mini or flash
+> model is usually the right default, with a bigger one added below it as a
+> fallback.
+
 You can add more than one provider — the app tries them in order and fails over
-to the next if one is down or out of quota. If you would rather use OpenAI,
-leave Base URL empty and use `gpt-4o-mini`.
+to the next if one is down or out of quota.
 
 Now open the app and generate something — notes, or a chat message. If text
 comes back, the whole stack works.

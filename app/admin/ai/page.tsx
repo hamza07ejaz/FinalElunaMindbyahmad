@@ -44,6 +44,15 @@ const when = (iso: string | null) => {
 
 export default function AiKeysPage() {
   const { toast, toastNode } = useToast();
+  /*
+   * The models this key can actually use.
+   *
+   * Fetched on demand rather than listed in the code: model names change every
+   * few months, and a list written here would be wrong by the time anybody
+   * read it. Asking the provider is the only answer that stays true.
+   */
+  const [models, setModels] = useState<{ chat: string[]; audio: string[] } | null>(null);
+  const [listing, setListing] = useState(false);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [env, setEnv] = useState<Env>({ present: false });
   const [setupNeeded, setSetupNeeded] = useState<string | null>(null);
@@ -107,6 +116,23 @@ export default function AiKeysPage() {
       const r = await fetch(`/api/admin/ai?id=${encodeURIComponent(row.id)}`, { method: "DELETE" });
       if (r.ok) { toast("Key deleted."); await load(); } else toast("Could not delete it.", true);
     } finally { setBusy(false); setAsk(null); }
+  }
+
+  /** Ask the provider which models this key can use. */
+  async function loadModels() {
+    setListing(true);
+    setModels(null);
+    try {
+      const r = await fetch("/api/admin/ai/models", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editing ? { id: editing } : { apiKey: form?.apiKey ?? "", baseUrl: form?.baseUrl ?? "" }),
+      });
+      const j = await r.json();
+      if (!r.ok) { toast(j.error || "Could not list the models.", true); return; }
+      setModels({ chat: j.chat ?? [], audio: j.audio ?? [] });
+      if (!(j.chat ?? []).length) toast("That key returned no chat models.", true);
+    } catch { toast("Network problem. Could not reach the provider.", true); }
+    finally { setListing(false); }
   }
 
   if (setupNeeded)
@@ -216,6 +242,52 @@ export default function AiKeysPage() {
             </Field>
           </div>
 
+          {models && (
+            <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-xs text-muted">
+                What this key can use, newest first. Click one to use it.
+              </p>
+
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {models.chat.map((m) => (
+                  <button key={m} type="button"
+                    onClick={() => setForm({ ...form, model: m })}
+                    className={`rounded-lg border px-2 py-1 font-mono text-[0.7rem] transition ${
+                      form.model === m
+                        ? "border-lamp bg-lamp/15 text-paper"
+                        : "border-white/10 bg-white/5 text-paper/80 hover:border-violet-400/50 hover:text-paper"
+                    }`}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+
+              {models.audio.length > 0 && (
+                <>
+                  <p className="mt-3 text-xs text-muted">For transcribing lecture recordings:</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {models.audio.map((m) => (
+                      <button key={m} type="button"
+                        onClick={() => setForm({ ...form, transcribeModel: m })}
+                        className={`rounded-lg border px-2 py-1 font-mono text-[0.7rem] transition ${
+                          form.transcribeModel === m
+                            ? "border-lamp bg-lamp/15 text-paper"
+                            : "border-white/10 bg-white/5 text-paper/80 hover:border-violet-400/50 hover:text-paper"
+                        }`}>
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <p className="mt-3 text-[0.7rem] text-mute/80">
+                Newer is not always better here: the big models cost several times more per answer,
+                and a study tool makes a lot of small requests. Test one before you keep it.
+              </p>
+            </div>
+          )}
+
           {testResult && (
             <p className={`mt-4 rounded-xl border p-3 text-sm ${
               testResult.ok ? "border-mint/30 bg-mint/10 text-mint" : "border-red-400/30 bg-red-500/10 text-red-100"}`}>
@@ -242,6 +314,19 @@ export default function AiKeysPage() {
                 {testing === "new" ? <><span className="spinner" /> Testing…</> : <><Icon name="zap" size={14} /> Test before saving</>}
               </button>
             )}
+
+            {/*
+              Rather than typing a model name and hoping.
+
+              Model names change every few months and a key does not always
+              have access to everything that exists, so the only list worth
+              showing is the one this key answers with.
+            */}
+            <button type="button" className="btn btn-ghost btn-sm"
+              disabled={listing || (!isEdit && !form.apiKey.trim())}
+              onClick={() => void loadModels()}>
+              {listing ? <><span className="spinner" /> Asking…</> : <><Icon name="search" size={14} /> Show my models</>}
+            </button>
 
             <button type="button" className="btn btn-ghost btn-sm"
               onClick={() => { setDraft(null); setEdit(null); setEditing(null); setTestResult(null); }}>

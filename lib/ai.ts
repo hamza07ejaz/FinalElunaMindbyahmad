@@ -410,6 +410,53 @@ export async function testProvider(p: Provider): Promise<{ ok: true; reply: stri
 }
 
 /**
+ * Which models this key can actually use, newest first.
+ *
+ * Model names change every few months and a wrong one fails at the moment a
+ * student presses a button, not when it is saved. Asking the provider removes
+ * the guesswork entirely: the list is what this particular account has access
+ * to today, which is a different thing from what is written in anybody's
+ * documentation.
+ *
+ * Sorted by when each was published, because "the latest one" is the question
+ * actually being asked.
+ */
+export async function listModels(
+  p: Provider,
+): Promise<{ ok: true; chat: string[]; audio: string[] } | { ok: false; error: string }> {
+  try {
+    const client = clientFor(p);
+    const res = await client.models.list();
+
+    const rows = (res?.data ?? []) as { id?: string; created?: number }[];
+    const seen = rows
+      .map((m) => ({ id: String(m.id ?? ""), created: Number(m.created) || 0 }))
+      .filter((m) => m.id)
+      .sort((a, b) => b.created - a.created);
+
+    /*
+     * Split by what each model is for.
+     *
+     * A key's list mixes chat models with transcription, embeddings, image and
+     * moderation models. Offering an embedding model where a chat model goes
+     * is a way to be told "this model does not support chat" an hour later.
+     */
+    const audio: string[] = [];
+    const chat: string[] = [];
+    for (const m of seen) {
+      const id = m.id.toLowerCase();
+      if (/whisper|transcrib|^gpt-4o-(mini-)?transcribe|speech-to-text/.test(id)) { audio.push(m.id); continue; }
+      if (/embed|moderation|tts|dall-e|image|audio-preview|realtime|rerank|guard/.test(id)) continue;
+      chat.push(m.id);
+    }
+
+    return { ok: true, chat: chat.slice(0, 60), audio: audio.slice(0, 20) };
+  } catch (err) {
+    return { ok: false, error: explain(err) };
+  }
+}
+
+/**
  * What to tell the *student* when a tool fails.
  *
  * `explain()` is for the admin dashboard — a student can do nothing about a base
