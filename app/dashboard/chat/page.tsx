@@ -8,7 +8,7 @@ import { Speak } from "../../_components/Speak";
 import { useUsage } from "../../_components/UsageProvider";
 import { UpgradeButton } from "../../_components/Upgrade";
 import { CopyButton } from "../../_components/ToolUI";
-import { ERROR_MARKER, STALL_MS, Stalled, readWithin } from "../../../lib/stream-client";
+import { CUT_OFF_NOTE, ERROR_MARKER, MAX_ANSWER_CHARS, PAINT_EVERY_MS, STALL_MS, Stalled, capAnswer, readWithin } from "../../../lib/stream-client";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; error?: boolean; upgrade?: boolean; file?: string };
 type ChatItem = { id: string; title: string; updated_at: string };
@@ -91,11 +91,45 @@ export default function ChatPage() {
       const cid = res.headers.get("x-chat-id");
       if (cid && cid !== activeRef.current) setActiveId(cid);
 
-      if (!res.body) { patch({ content: await res.text() }); }
+      /*
+       * An answer that arrives all at once still has to be bounded.
+       *
+       * This branch is taken whenever the response is not a readable stream,
+       * which a proxy, a test double or a provider without streaming can all
+       * cause. It had no ceiling, so the protection on the streamed path was
+       * one a reader could not rely on.
+       */
+      if (!res.body) { patch({ content: capAnswer(await res.text()) }); }
       else {
         const reader = res.body.getReader();
         const dec = new TextDecoder();
         let acc = "";
+
+        /*
+         * Paint at most twenty times a second, not once per piece.
+         *
+         * Every repaint re-formats the whole answer so far, so painting on
+         * each arriving piece makes the work grow with the square of the
+         * length. On a long answer that was enough to exhaust the tab.
+         */
+        let painted = 0;
+        /*
+         * Set once something final has been written — a cut-off notice, a
+         * stall, an error. The throttle paints whatever has accumulated when
+         * the loop ends, which would otherwise overwrite that final message
+         * with the raw text it was replacing.
+         */
+        let settled = false;
+        const paint = (force = false) => {
+          if (settled) return;
+          const now = Date.now();
+          if (!force && now - painted < PAINT_EVERY_MS) return;
+          painted = now;
+          patch({ content: acc });
+        };
+        /** The last thing the reader will see. Nothing paints after this. */
+        const settle = (p: Partial<Msg>) => { settled = true; patch(p); };
+
         for (;;) {
           let chunk: ReadableStreamReadResult<Uint8Array>;
           try {
@@ -104,24 +138,44 @@ export default function ChatPage() {
             // Nothing has arrived for half a minute. Keep whatever was said and
             // stop, instead of leaving the user watching a cursor blink.
             ctrl.abort();
-            patch(acc.trim()
+            settle(acc.trim()
               ? { content: `${acc}\n\n---\n*The answer was cut off — the connection went quiet. Ask again to carry on.*` }
               : { content: "The AI took too long to answer. Your message was not counted — please try again.", error: true });
             break;
           }
           if (chunk.done) break;
           acc += dec.decode(chunk.value, { stream: true });
+
+          /*
+           * A runaway answer is stopped here rather than by the browser.
+           *
+           * Nothing legitimate reaches this length. A model that has started
+           * repeating itself will keep going until something stops it, and the
+           * something used to be the tab running out of memory — which loses
+           * the whole conversation, not just the answer.
+           */
+          if (acc.length > MAX_ANSWER_CHARS) {
+            ctrl.abort();
+            // Let go of the oversized string as well as stopping: keeping it
+            // alive is most of what the ceiling exists to prevent.
+            const kept = acc.slice(0, MAX_ANSWER_CHARS);
+            acc = kept;
+            settle({ content: kept + CUT_OFF_NOTE });
+            break;
+          }
           if (acc.includes(ERROR_MARKER.trim())) {
             // The marker only ever arrives when the server has nothing else, but
             // keep any partial text in case that changes.
             const partial = acc.replace(ERROR_MARKER.trim(), "").trim();
-            patch(partial
+            settle(partial
               ? { content: partial }
               : { content: "The AI could not answer right now. Your message was not counted, please try again.", error: true });
             break;
           }
-          patch({ content: acc });
+          paint();
         }
+        // Whatever arrived after the last paint, including the final piece.
+        if (acc.trim()) paint(true);
       }
     } catch (e) {
       if (e instanceof Stalled) {

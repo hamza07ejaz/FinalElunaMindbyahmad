@@ -8,7 +8,7 @@
  * one slow query held the browser open long after the answer had arrived.
  */
 
-import { ERROR_MARKER } from "./stream-client";
+import { ERROR_MARKER, MAX_ANSWER_CHARS } from "./stream-client";
 export { ERROR_MARKER };
 
 export type ChatStreamParts = {
@@ -36,6 +36,9 @@ export type ChatStreamParts = {
  * Nothing after the close can delay the browser, and the close happens whatever
  * went wrong above it.
  */
+/** Said to the reader when an answer is stopped for running too long. */
+const CUT_OFF = "\n\n---\n*The answer was cut off — it ran much longer than an answer should.*";
+
 export function chatStream(parts: ChatStreamParts): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const report = parts.onError ?? (() => {});
@@ -49,7 +52,25 @@ export function chatStream(parts: ChatStreamParts): ReadableStream<Uint8Array> {
 
       try {
         try {
-          for await (const t of parts.chunks) { answer += t; push(t); }
+          for await (const t of parts.chunks) {
+            answer += t;
+            push(t);
+
+            /*
+             * Stop a runaway answer at the source.
+             *
+             * The browser has its own ceiling, but by the time it is reached
+             * the tokens are already paid for and the row about to be written
+             * to the database is enormous. A model that has started repeating
+             * itself will not stop on its own, so this hangs up on it.
+             */
+            if (answer.length > MAX_ANSWER_CHARS) {
+              answer = answer.slice(0, MAX_ANSWER_CHARS);
+              push(CUT_OFF);
+              parts.abort();
+              break;
+            }
+          }
         } catch (err) {
           // Keep whatever arrived: half an explanation beats an error message.
           report(err, "stream");

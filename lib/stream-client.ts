@@ -21,6 +21,48 @@ export const STALL_MS = 30_000;
  */
 export const ERROR_MARKER = "\n[[ERROR]]";
 
+/**
+ * The most of one answer a browser tab will hold.
+ *
+ * A streamed answer used to grow without limit: every piece that arrived was
+ * added to a string, and the whole string was re-rendered as formatted text on
+ * each one. A model that repeats itself — which they do, and which a new model
+ * on an unfamiliar prompt does more often — produces hundreds of thousands of
+ * words, and the tab dies with "Aw, Snap! Out of Memory" before anybody can
+ * press stop.
+ *
+ * 120,000 characters is roughly a 200-page essay. No real answer comes close,
+ * and anything past it is a model that has lost its way: better to keep what
+ * was said, say it was cut off, and leave the browser alive.
+ */
+export const MAX_ANSWER_CHARS = 120_000;
+
+/**
+ * How often the growing answer is painted, in milliseconds.
+ *
+ * Pieces arrive many times a second, and each repaint re-formats the entire
+ * answer so far — so the work grows with the square of the length. Painting at
+ * most twenty times a second looks identical to a reader and does a fraction
+ * of the work.
+ */
+export const PAINT_EVERY_MS = 50;
+
+/**
+ * Trim an answer to what a browser can safely hold, and say so if it was cut.
+ *
+ * Used on both paths the answer can arrive by. The streamed path had the
+ * ceiling and the non-streamed one did not, which is a distinction no reader
+ * can see and no model respects.
+ */
+export function capAnswer(text: string): string {
+  if (text.length <= MAX_ANSWER_CHARS) return text;
+  return `${text.slice(0, MAX_ANSWER_CHARS)}${CUT_OFF_NOTE}`;
+}
+
+/** Said to the reader when an answer is stopped for running too long. */
+export const CUT_OFF_NOTE =
+  "\n\n---\n*The answer was cut off — it ran much longer than an answer should. Try asking for something more specific.*";
+
 /** Thrown when a deadline passes. Distinct from an abort, which the user did. */
 export class Stalled extends Error {
   constructor(message = "stalled") { super(message); this.name = "Stalled"; }
